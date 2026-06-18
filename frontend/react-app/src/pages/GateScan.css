@@ -1,0 +1,135 @@
+.qms-gatescan-page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.qms-gatescan-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.qms-gatescan-header h1 {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.qms-gatescan-header p {
+  font-size: 14px;
+  color: var(--gray-500);
+}
+
+.qms-scanner-card {
+  overflow: hidden;
+}
+
+.qms-camera-view {
+  height: 360px;
+  background: #000;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qms-scanner-frame {
+  width: 240px;
+  height: 240px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qms-scan-icon {
+  color: var(--green);
+  opacity: 0.8;
+  animation: pulse 2s infinite;
+}
+
+.qms-scan-corners::before,
+.qms-scan-corners::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-color: var(--green);
+  border-style: solid;
+}
+
+.qms-scan-corners::before {
+  top: -2px; left: -2px;
+  border-width: 3px 0 0 3px;
+}
+
+.qms-scan-corners::after {
+  bottom: -2px; right: -2px;
+  border-width: 0 3px 3px 0;
+}
+
+.qms-camera-overlay {
+  position: absolute;
+  bottom: 16px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+}
+
+.qms-scan-result {
+  text-align: center;
+}
+
+.qms-success-mark {
+  color: var(--green);
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.qms-truck-details {
+  text-align: left;
+  margin-bottom: 24px;
+}
+
+.qms-td-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 14px;
+}
+
+.qms-td-row:last-child {
+  border-bottom: none;
+}
+
+.qms-td-row span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qms-alert-box {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  text-align: left;
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.qms-alert--success {
+  background: var(--green-light);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.5; }
+}

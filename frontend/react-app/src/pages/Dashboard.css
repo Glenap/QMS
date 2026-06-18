@@ -1,0 +1,160 @@
+.qms-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.qms-kpi-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.qms-kpi-label {
+  font-size: 12px;
+  color: var(--gray-500);
+  margin-bottom: 8px;
+}
+
+.qms-kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.qms-kpi-delta {
+  font-size: 12px;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qms-kpi-delta--up {
+  color: var(--green);
+}
+
+.qms-kpi-delta--down {
+  color: var(--red);
+}
+
+.qms-kpi-delta--warn {
+  color: var(--amber);
+}
+
+.qms-dashboard-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.qms-chart-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.qms-chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-900);
+  margin-bottom: 16px;
+}
+
+.qms-chart-container {
+  height: 140px;
+  width: 100%;
+}
+
+.qms-mini-chart {
+  height: 140px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.qms-bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: 6px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.qms-bar {
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.3s;
+}
+
+.qms-bar--pass { background: #057A55; }
+.qms-bar--pass-alt { background: #3B6D11; }
+.qms-bar--pass-alt2 { background: #639922; }
+.qms-bar--warn {
+  background: var(--amber-light);
+  border: 1px solid var(--amber);
+  border-bottom: none;
+}
+
+.qms-bar-label {
+  font-size: 11px;
+  color: var(--gray-500);
+}
+
+.qms-bar-val {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qms-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.qms-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.qms-table-container {
+  overflow-x: auto;
+}
+
+.qms-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.qms-table th {
+  text-align: left;
+  padding: 12px 16px;
+  color: var(--gray-500);
+  font-weight: 500;
+  border-bottom: 1px solid var(--gray-200);
+  white-space: nowrap;
+}
+
+.qms-table td {
+  padding: 14px 16px;
+  color: var(--gray-700);
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: middle;
+}
+
+.qms-table tr:last-child td {
+  border-bottom: none;
+}
+
+.qms-table tr:hover td {
+  background: var(--gray-50);
+}
+
+.font-medium {
+  font-weight: 500;
+}

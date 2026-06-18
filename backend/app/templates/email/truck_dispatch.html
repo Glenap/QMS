@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Dispatch Request</title></head>
+<body style="font-family:sans-serif;color:#333;max-width:520px;margin:0 auto;padding:24px">
+  <h2 style="color:#1a1a2e">Concrete dispatch request</h2>
+  <p>Dear <strong>{{ supplier_name }}</strong>,</p>
+  <p>A concrete delivery has been requested for the following:</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0">
+    <tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666">Project</td><td style="padding:8px;border-bottom:1px solid #eee;font-weight:500">{{ project_name }}</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666">Grade</td><td style="padding:8px;border-bottom:1px solid #eee;font-weight:500">{{ grade }}</td></tr>
+    <tr><td style="padding:8px;color:#666">Volume ordered</td><td style="padding:8px;font-weight:500">{{ volume_ordered }} cum</td></tr>
+  </table>
+  <p>Please click the button below to fill in the truck details. <strong>No login is required.</strong></p>
+  <p style="margin:24px 0">
+    <a href="{{ form_url }}"
+       style="background:#0F6E56;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500">
+      Fill truck details
+    </a>
+  </p>
+  <p style="color:#666;font-size:13px">This link expires in {{ expires_hours }} hours.</p>
+  <hr style="border:none;border-top:1px solid #eee;margin-top:32px">
+  <p style="color:#999;font-size:12px">Construction Quality Management System</p>
+</body>
+</html>

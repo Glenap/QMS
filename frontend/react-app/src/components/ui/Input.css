@@ -1,0 +1,59 @@
+.qms-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.qms-input--full {
+  width: 100%;
+}
+
+.qms-input-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-700);
+}
+
+.qms-req {
+  color: var(--red);
+  margin-left: 2px;
+}
+
+.qms-input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  font-size: 14px;
+  color: var(--gray-900);
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.qms-input:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.1);
+}
+
+.qms-input:disabled {
+  background: var(--gray-100);
+  color: var(--gray-500);
+  cursor: not-allowed;
+}
+
+.qms-input--error {
+  border-color: var(--red);
+}
+
+.qms-input--error:focus {
+  box-shadow: 0 0 0 3px rgba(200, 30, 30, 0.1);
+}
+
+.qms-input-error-text {
+  font-size: 12px;
+  color: var(--red);
+  margin-top: 2px;
+}

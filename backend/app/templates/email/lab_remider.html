@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Pending Results</title></head>
+<body style="font-family:sans-serif;color:#333;max-width:520px;margin:0 auto;padding:24px">
+  <h2 style="color:#633806">Pending cube test results</h2>
+  <p>Dear <strong>{{ lab_name }}</strong>,</p>
+  <p>The following cube test results are overdue. Please submit them at your earliest convenience.</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0">
+    <tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666">Project</td><td style="padding:8px;border-bottom:1px solid #eee;font-weight:500">{{ project_name }}</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666">Sample reference</td><td style="padding:8px;border-bottom:1px solid #eee;font-weight:500">{{ sample_reference }}</td></tr>
+    <tr><td style="padding:8px;border-bottom:1px solid #eee;color:#666">Test age</td><td style="padding:8px;border-bottom:1px solid #eee;font-weight:500">{{ test_age_days }} days</td></tr>
+    <tr><td style="padding:8px;color:#666">Expected by</td><td style="padding:8px;font-weight:500;color:#A32D2D">{{ expected_result_date }}</td></tr>
+  </table>
+  <p style="color:#666;font-size:13px">Please contact the project quality engineer if you have any questions.</p>
+  <hr style="border:none;border-top:1px solid #eee;margin-top:32px">
+  <p style="color:#999;font-size:12px">Construction Quality Management System</p>
+</body>
+</html>

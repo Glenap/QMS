@@ -1,0 +1,936 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:Inter,system-ui,sans-serif}
+:root{
+--blue:#1A56DB;--blue-light:#EBF5FF;--blue-mid:#3B82F6;
+--green:#057A55;--green-light:#DEF7EC;
+--red:#C81E1E;--red-light:#FDE8E8;
+--amber:#C27803;--amber-light:#FDF6B2;
+--gray-50:#F9FAFB;--gray-100:#F3F4F6;--gray-200:#E5E7EB;
+--gray-300:#D1D5DB;--gray-500:#6B7280;--gray-700:#374151;--gray-900:#111928;
+--sidebar-w:220px;--header-h:52px;
+}
+.app{display:flex;height:900px;background:var(--gray-50);border:0.5px solid var(--gray-200);border-radius:12px;overflow:hidden}
+.sidebar{width:var(--sidebar-w);background:#fff;border-right:0.5px solid var(--gray-200);display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-top{padding:16px;border-bottom:0.5px solid var(--gray-200)}
+.logo{display:flex;align-items:center;gap:8px}
+.logo-icon{width:30px;height:30px;background:var(--blue);border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:600}
+.logo-text{font-size:15px;font-weight:600;color:var(--gray-900)}
+.logo-sub{font-size:10px;color:var(--gray-500);margin-top:1px}
+.project-badge{margin-top:12px;padding:8px 10px;background:var(--blue-light);border-radius:8px;font-size:11px;color:#1A56DB;font-weight:500}
+.project-badge span{display:block;font-size:10px;color:var(--blue-mid);margin-top:2px;font-weight:400}
+.nav{flex:1;overflow-y:auto;padding:8px}
+.nav-section{font-size:10px;font-weight:500;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;padding:12px 8px 4px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--gray-700);transition:all 0.12s;margin-bottom:1px;text-decoration:none}
+.nav-item:hover{background:var(--gray-100)}
+.nav-item.active{background:var(--blue-light);color:var(--blue);font-weight:500}
+.nav-item i{font-size:16px;width:18px;flex-shrink:0}
+.nav-badge{margin-left:auto;background:var(--red-light);color:var(--red);font-size:10px;font-weight:500;padding:1px 6px;border-radius:99px}
+.sidebar-bottom{padding:12px;border-top:0.5px solid var(--gray-200)}
+.user-row{display:flex;align-items:center;gap:8px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--blue-light);color:var(--blue);font-size:12px;font-weight:500;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.user-name{font-size:12px;font-weight:500;color:var(--gray-900)}
+.user-role{font-size:10px;color:var(--gray-500)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{height:var(--header-h);background:#fff;border-bottom:0.5px solid var(--gray-200);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0}
+.page-title{font-size:15px;font-weight:600;color:var(--gray-900);flex:1}
+.topbar-actions{display:flex;align-items:center;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:all 0.12s}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-primary:hover{background:#1648C8}
+.btn-outline{background:#fff;color:var(--gray-700);border:0.5px solid var(--gray-300)}
+.btn-outline:hover{background:var(--gray-100)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.btn-danger{background:var(--red);color:#fff}
+.btn-success{background:var(--green);color:#fff}
+.notif-btn{width:34px;height:34px;border-radius:7px;border:0.5px solid var(--gray-200);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+.notif-dot{width:8px;height:8px;background:var(--red);border-radius:50%;position:absolute;top:5px;right:5px;border:1.5px solid #fff}
+.content{flex:1;overflow-y:auto;padding:20px}
+.screen{display:none}
+.screen.active{display:block}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:20px}
+.kpi-card{background:#fff;border:0.5px solid var(--gray-200);border-radius:10px;padding:14px}
+.kpi-label{font-size:11px;color:var(--gray-500);margin-bottom:6px}
+.kpi-value{font-size:22px;font-weight:600;color:var(--gray-900)}
+.kpi-delta{font-size:11px;margin-top:4px}
+.kpi-delta.up{color:var(--green)}
+.kpi-delta.down{color:var(--red)}
+.kpi-delta.warn{color:var(--amber)}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-size:14px;font-weight:600;color:var(--gray-900)}
+.card{background:#fff;border:0.5px solid var(--gray-200);border-radius:10px;padding:16px;margin-bottom:16px}
+.chart-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:20px}
+.chart-box{background:#fff;border:0.5px solid var(--gray-200);border-radius:10px;padding:14px}
+.chart-title{font-size:12px;font-weight:500;color:var(--gray-900);margin-bottom:12px}
+.mini-chart{height:90px;display:flex;align-items:flex-end;gap:4px}
+.bar{flex:1;border-radius:3px 3px 0 0;transition:height 0.3s}
+.bar.pass{background:#057A55}
+.bar.fail{background:var(--red-light);border:0.5px solid #C81E1E}
+.line-chart{height:80px;position:relative}
+.line-chart svg{width:100%;height:100%}
+.status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:500}
+.pass-badge{background:var(--green-light);color:var(--green)}
+.fail-badge{background:var(--red-light);color:var(--red)}
+.pending-badge{background:var(--gray-100);color:var(--gray-500)}
+.warn-badge{background:var(--amber-light);color:var(--amber)}
+.info-badge{background:var(--blue-light);color:var(--blue)}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:8px 10px;color:var(--gray-500);font-weight:500;border-bottom:0.5px solid var(--gray-200);white-space:nowrap}
+td{padding:9px 10px;color:var(--gray-700);border-bottom:0.5px solid var(--gray-100);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--gray-50)}
+.severity-row-critical td:first-child{border-left:3px solid var(--red)}
+.severity-row-major td:first-child{border-left:3px solid var(--amber)}
+.severity-row-minor td:first-child{border-left:3px solid var(--gray-300)}
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:12px;font-weight:500;color:var(--gray-700);margin-bottom:5px}
+.form-label .req{color:var(--red);margin-left:2px}
+.form-input{width:100%;height:36px;border:0.5px solid var(--gray-300);border-radius:7px;padding:0 10px;font-size:13px;color:var(--gray-900);background:#fff}
+.form-input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(26,86,219,0.1)}
+.form-input.readonly{background:var(--gray-100);color:var(--gray-500)}
+.form-select{width:100%;height:36px;border:0.5px solid var(--gray-300);border-radius:7px;padding:0 10px;font-size:13px;color:var(--gray-900);background:#fff;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.form-section{background:#fff;border:0.5px solid var(--gray-200);border-radius:10px;padding:16px;margin-bottom:14px}
+.form-section-head{font-size:12px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:14px;padding-bottom:10px;border-bottom:0.5px solid var(--gray-100)}
+.auto-banner{background:var(--blue-light);border:0.5px solid #93C5FD;border-radius:8px;padding:10px 12px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:12px}
+.auto-field{font-size:11px}
+.auto-field label{color:var(--blue);font-weight:500;display:block}
+.auto-field span{color:#1E40AF;font-family:monospace;font-size:12px}
+.toggle{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--gray-700)}
+.toggle-track{width:36px;height:20px;background:var(--gray-300);border-radius:99px;position:relative;cursor:pointer;transition:background 0.2s;flex-shrink:0}
+.toggle-track.on{background:var(--blue)}
+.toggle-thumb{width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:transform 0.2s}
+.toggle-track.on .toggle-thumb{transform:translateX(16px)}
+.checklist-item{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:0.5px solid var(--gray-100);font-size:13px;color:var(--gray-700)}
+.checklist-item:last-child{border-bottom:none}
+.seg-btns{display:flex;border:0.5px solid var(--gray-200);border-radius:7px;overflow:hidden}
+.seg-btn{flex:1;padding:5px 8px;font-size:11px;font-weight:500;text-align:center;cursor:pointer;border:none;background:#fff;color:var(--gray-500);transition:all 0.12s}
+.seg-btn.active-pass{background:var(--green-light);color:var(--green)}
+.seg-btn.active-fail{background:var(--red-light);color:var(--red)}
+.seg-btn.active-na{background:var(--gray-100);color:var(--gray-500)}
+.result-banner{border-radius:10px;padding:18px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px}
+.result-banner.pass{background:var(--green-light);border:0.5px solid #6EE7B7}
+.result-banner.fail{background:var(--red-light);border:0.5px solid #FCA5A5}
+.result-banner.borderline{background:var(--amber-light);border:0.5px solid #FCD34D}
+.result-icon{font-size:28px}
+.result-label{font-size:18px;font-weight:700}
+.result-label.pass{color:var(--green)}
+.result-label.fail{color:var(--red)}
+.result-label.borderline{color:var(--amber)}
+.trace-chain{padding:8px 0}
+.trace-node{display:flex;gap:12px;padding:10px 0}
+.trace-dot-col{display:flex;flex-direction:column;align-items:center;width:20px;flex-shrink:0}
+.trace-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.trace-line{flex:1;width:1.5px;background:var(--gray-200);margin-top:4px}
+.trace-content{flex:1;background:#fff;border:0.5px solid var(--gray-200);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color 0.12s}
+.trace-content:hover{border-color:var(--blue)}
+.trace-node-title{font-size:12px;font-weight:500;color:var(--gray-900)}
+.trace-node-sub{font-size:11px;color:var(--gray-500);margin-top:2px}
+.confidence-bar{height:3px;border-radius:99px;margin-top:6px;background:var(--gray-100)}
+.confidence-fill{height:100%;border-radius:99px}
+.notif-panel{background:#fff;border:0.5px solid var(--gray-200);border-radius:10px;padding:0;overflow:hidden}
+.notif-item{display:flex;gap:12px;padding:12px 16px;border-bottom:0.5px solid var(--gray-100);cursor:pointer;transition:background 0.12s}
+.notif-item:hover{background:var(--gray-50)}
+.notif-item:last-child{border-bottom:none}
+.notif-icon-wrap{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px}
+.notif-title{font-size:12px;font-weight:500;color:var(--gray-900)}
+.notif-sub{font-size:11px;color:var(--gray-500);margin-top:2px;line-height:1.4}
+.notif-time{font-size:10px;color:var(--gray-500);margin-top:4px}
+.chat-wrap{display:flex;gap:14px;height:700px}
+.chat-panel{flex:1;display:flex;flex-direction:column;background:#fff;border:0.5px solid var(--gray-200);border-radius:10px;overflow:hidden}
+.chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:85%}
+.msg.user{align-self:flex-end}
+.msg-bubble{padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.5}
+.msg.bot .msg-bubble{background:var(--gray-100);color:var(--gray-900);border-radius:4px 10px 10px 10px}
+.msg.user .msg-bubble{background:var(--blue);color:#fff;border-radius:10px 4px 10px 10px}
+.msg-sources{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.src-chip{font-size:10px;padding:2px 7px;background:var(--blue-light);color:var(--blue);border-radius:99px;cursor:pointer}
+.chat-input-row{padding:12px;border-top:0.5px solid var(--gray-200);display:flex;gap:8px}
+.chat-input{flex:1;height:36px;border:0.5px solid var(--gray-300);border-radius:7px;padding:0 12px;font-size:13px}
+.ctx-panel{width:240px;background:var(--gray-50);border:0.5px solid var(--gray-200);border-radius:10px;padding:12px;overflow-y:auto}
+.ctx-title{font-size:11px;font-weight:500;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px}
+.ctx-card{background:#fff;border:0.5px solid var(--gray-200);border-radius:8px;padding:10px;margin-bottom:8px}
+.ctx-card-title{font-size:11px;font-weight:500;color:var(--gray-900)}
+.ctx-card-val{font-size:13px;font-weight:600;margin-top:3px}
+.screen-nav{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 16px}
+.screen-nav-btn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;border:0.5px solid var(--gray-200);background:#fff;color:var(--gray-700);transition:all 0.12s}
+.screen-nav-btn:hover{background:var(--blue-light);color:var(--blue);border-color:var(--blue)}
+.screen-nav-btn.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.gate-wrap{background:var(--gray-900);border-radius:12px;padding:40px 20px;text-align:center;color:#fff;min-height:400px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+.qr-box{width:120px;height:120px;border:3px dashed rgba(255,255,255,0.3);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:48px;color:rgba(255,255,255,0.3)}
+.qr-title{font-size:20px;font-weight:600}
+.qr-sub{font-size:13px;color:rgba(255,255,255,0.6)}
+.truck-card{background:#fff;border-radius:12px;padding:20px;text-align:left;width:100%;max-width:340px}
+.truck-card-title{font-size:16px;font-weight:600;color:var(--gray-900);display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.truck-detail-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--gray-100);font-size:12px}
+.truck-detail-row:last-child{border-bottom:none}
+.truck-detail-key{color:var(--gray-500)}
+.truck-detail-val{font-weight:500;color:var(--gray-900)}
+.step-indicator{display:flex;align-items:center;gap:0;margin-bottom:24px}
+.step{display:flex;align-items:center;gap:6px;font-size:12px}
+.step-circle{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0}
+.step.done .step-circle{background:var(--blue);color:#fff}
+.step.active .step-circle{background:var(--blue);color:#fff;box-shadow:0 0 0 3px rgba(26,86,219,0.2)}
+.step.todo .step-circle{background:var(--gray-100);color:var(--gray-500);border:0.5px solid var(--gray-200)}
+.step-label{color:var(--gray-500);font-size:11px}
+.step.active .step-label{color:var(--blue);font-weight:500}
+.step.done .step-label{color:var(--gray-700)}
+.step-connector{flex:1;height:0.5px;background:var(--gray-200);margin:0 6px;min-width:20px}
+.step-connector.done{background:var(--blue)}
+.heatmap{display:grid;gap:3px;margin-top:8px}
+.heatmap-cell{height:20px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500}
+.pour-truck-card{background:var(--gray-50);border:0.5px solid var(--gray-200);border-radius:8px;padding:12px;margin-bottom:8px}
+.pour-truck-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.pour-truck-id{font-size:12px;font-weight:500;color:var(--gray-900)}
+.transit-warn{font-size:11px;color:var(--red);background:var(--red-light);padding:2px 6px;border-radius:4px}
+.pour-truck-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.pour-truck-field{font-size:11px}
+.pour-truck-label{color:var(--gray-500)}
+.pour-truck-val{font-weight:500;color:var(--gray-900)}
+</style>
+
+<h2 class="sr-only">QMS Quality Management System — complete interactive UI prototype with 9 screens</h2>
+
+<div class="screen-nav" id="screennav">
+  <button class="screen-nav-btn active" onclick="showScreen('dashboard')">Dashboard</button>
+  <button class="screen-nav-btn" onclick="showScreen('pour')">Pour card</button>
+  <button class="screen-nav-btn" onclick="showScreen('result')">Cube result</button>
+  <button class="screen-nav-btn" onclick="showScreen('trace')">Traceability</button>
+  <button class="screen-nav-btn" onclick="showScreen('ncr')">NCR</button>
+  <button class="screen-nav-btn" onclick="showScreen('gate')">Gate scan</button>
+  <button class="screen-nav-btn" onclick="showScreen('supplier')">Supplier form</button>
+  <button class="screen-nav-btn" onclick="showScreen('chatbot')">Chatbot</button>
+  <button class="screen-nav-btn" onclick="showScreen('analytics')">Analytics</button>
+</div>
+
+<div class="app">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="logo">
+        <div class="logo-icon">QM</div>
+        <div><div class="logo-text">QMS</div><div class="logo-sub">Quality management</div></div>
+      </div>
+      <div class="project-badge">Godrej Splendour Phase 2<span>PRJ-2024-001 · Active</span></div>
+    </div>
+    <div class="nav">
+      <div class="nav-section">Overview</div>
+      <a class="nav-item" onclick="showScreen('dashboard')" id="nav-dashboard"><i class="ti ti-home" aria-hidden="true"></i> Dashboard</a>
+      <a class="nav-item" onclick="showScreen('analytics')" id="nav-analytics"><i class="ti ti-chart-bar" aria-hidden="true"></i> Analytics</a>
+      <div class="nav-section">Operations</div>
+      <a class="nav-item" onclick="showScreen('pour')" id="nav-pour"><i class="ti ti-file-description" aria-hidden="true"></i> Pour cards</a>
+      <a class="nav-item" id="nav-result"><i class="ti ti-test-pipe" aria-hidden="true"></i> Cube results</a>
+      <a class="nav-item" onclick="showScreen('trace')" id="nav-trace"><i class="ti ti-link" aria-hidden="true"></i> Traceability</a>
+      <a class="nav-item" onclick="showScreen('gate')" id="nav-gate"><i class="ti ti-scan" aria-hidden="true"></i> Gate scan</a>
+      <div class="nav-section">Quality</div>
+      <a class="nav-item" onclick="showScreen('ncr')" id="nav-ncr"><i class="ti ti-alert-triangle" aria-hidden="true"></i> NCR <span class="nav-badge">3</span></a>
+      <a class="nav-item" id="nav-ncr2"><i class="ti ti-report" aria-hidden="true"></i> Reports</a>
+      <div class="nav-section">Setup</div>
+      <a class="nav-item" onclick="showScreen('supplier')" id="nav-supplier"><i class="ti ti-truck" aria-hidden="true"></i> Suppliers</a>
+      <a class="nav-item" id="nav-labs"><i class="ti ti-building" aria-hidden="true"></i> Laboratories</a>
+      <a class="nav-item" id="nav-team"><i class="ti ti-users" aria-hidden="true"></i> Team</a>
+      <div class="nav-section">AI</div>
+      <a class="nav-item" onclick="showScreen('chatbot')" id="nav-chatbot"><i class="ti ti-message-circle" aria-hidden="true"></i> QMS assistant</a>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="user-row">
+        <div class="avatar">RS</div>
+        <div><div class="user-name">Rajesh Sharma</div><div class="user-role">Super Admin</div></div>
+        <i class="ti ti-settings" style="margin-left:auto;font-size:15px;color:var(--gray-500);cursor:pointer" aria-hidden="true"></i>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="page-title" id="page-title">Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn btn-outline btn-sm"><i class="ti ti-download" aria-hidden="true"></i> Export</button>
+        <button class="btn btn-primary btn-sm"><i class="ti ti-plus" aria-hidden="true"></i> New pour card</button>
+        <div class="notif-btn" onclick="showScreen('notifs')"><i class="ti ti-bell" style="font-size:16px;color:var(--gray-500)" aria-hidden="true"></i><div class="notif-dot"></div></div>
+        <div class="avatar" style="cursor:pointer">RS</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <div class="screen active" id="screen-dashboard">
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-label">Total pours</div><div class="kpi-value">247</div><div class="kpi-delta up"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> 18 this month</div></div>
+          <div class="kpi-card"><div class="kpi-label">Pass rate</div><div class="kpi-value" style="color:var(--green)">91.4%</div><div class="kpi-delta up"><i class="ti ti-arrow-up-right" aria-hidden="true"></i> +2.1% vs last month</div></div>
+          <div class="kpi-card"><div class="kpi-label">Open NCRs</div><div class="kpi-value" style="color:var(--red)">3</div><div class="kpi-delta down">2 overdue response</div></div>
+          <div class="kpi-card"><div class="kpi-label">Pending cube tests</div><div class="kpi-value" style="color:var(--amber)">14</div><div class="kpi-delta warn">3 overdue today</div></div>
+          <div class="kpi-card"><div class="kpi-label">Active suppliers</div><div class="kpi-value">4</div><div class="kpi-delta warn">1 below 85% rate</div></div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-box">
+            <div class="chart-title">Monthly pass rate — last 6 months</div>
+            <div class="line-chart">
+              <svg viewBox="0 0 240 80" preserveAspectRatio="none">
+                <polyline fill="none" stroke="#057A55" stroke-width="2" points="0,55 48,45 96,50 144,35 192,28 240,18"/>
+                <polyline fill="none" stroke="#E5E7EB" stroke-width="0.5" points="0,20 240,20"/>
+                <polyline fill="none" stroke="#E5E7EB" stroke-width="0.5" points="0,40 240,40"/>
+                <polyline fill="none" stroke="#E5E7EB" stroke-width="0.5" points="0,60 240,60"/>
+                <text x="0" y="78" font-size="8" fill="#9CA3AF">Jan</text>
+                <text x="44" y="78" font-size="8" fill="#9CA3AF">Feb</text>
+                <text x="88" y="78" font-size="8" fill="#9CA3AF">Mar</text>
+                <text x="132" y="78" font-size="8" fill="#9CA3AF">Apr</text>
+                <text x="176" y="78" font-size="8" fill="#9CA3AF">May</text>
+                <text x="218" y="78" font-size="8" fill="#9CA3AF">Jun</text>
+              </svg>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-500);margin-top:4px">
+              <span>Jan: 87.2%</span><span>Jun: 91.4%</span>
+            </div>
+          </div>
+          <div class="chart-box">
+            <div class="chart-title">Supplier pass rate comparison</div>
+            <div class="mini-chart">
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">
+                <div class="bar pass" style="height:78px;width:100%"></div>
+                <div style="font-size:9px;color:var(--gray-500)">UTC</div>
+                <div style="font-size:10px;font-weight:500;color:var(--green)">94%</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">
+                <div class="bar pass" style="height:65px;width:100%;background:#3B6D11"></div>
+                <div style="font-size:9px;color:var(--gray-500)">ACC</div>
+                <div style="font-size:10px;font-weight:500;color:var(--green)">88%</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">
+                <div class="bar pass" style="height:72px;width:100%;background:#639922"></div>
+                <div style="font-size:9px;color:var(--gray-500)">PRE</div>
+                <div style="font-size:10px;font-weight:500;color:var(--green)">91%</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:4px">
+                <div style="height:56px;width:100%;background:var(--amber-light);border:0.5px solid var(--amber);border-radius:3px 3px 0 0"></div>
+                <div style="font-size:9px;color:var(--gray-500)">NUV</div>
+                <div style="font-size:10px;font-weight:500;color:var(--amber)">82%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="section-head"><div class="section-title">Recent cube test results</div><button class="btn btn-outline btn-sm">View all</button></div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cube ID</th><th>Location</th><th>Grade</th><th>Strength (MPa)</th><th>Age</th><th>Supplier</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody>
+                <tr><td style="font-weight:500">C-047</td><td>T1 · 5F · Slab</td><td>M40</td><td style="font-weight:500;color:var(--green)">48.3</td><td>28 day</td><td>UltraTech RMC</td><td><span class="status-badge pass-badge"><i class="ti ti-check" aria-hidden="true"></i> Pass</span></td><td>29-Jun-24</td></tr>
+                <tr><td style="font-weight:500">C-048</td><td>T1 · 5F · Slab</td><td>M40</td><td style="font-weight:500;color:var(--red)">37.2</td><td>28 day</td><td>UltraTech RMC</td><td><span class="status-badge fail-badge"><i class="ti ti-x" aria-hidden="true"></i> Fail</span></td><td>29-Jun-24</td></tr>
+                <tr><td style="font-weight:500">C-049</td><td>T2 · 3F · Column</td><td>M35</td><td style="font-weight:500;color:var(--amber)">34.8</td><td>28 day</td><td>ACC Concrete</td><td><span class="status-badge warn-badge">⚠ Borderline</span></td><td>28-Jun-24</td></tr>
+                <tr><td style="font-weight:500">C-050</td><td>T1 · 6F · Beam</td><td>M30</td><td style="font-weight:500;color:var(--green)">36.5</td><td>7 day</td><td>Premia RMC</td><td><span class="status-badge pass-badge"><i class="ti ti-check" aria-hidden="true"></i> Pass</span></td><td>27-Jun-24</td></tr>
+                <tr><td style="font-weight:500">C-051</td><td>T3 · 1F · Raft</td><td>M25</td><td style="color:var(--gray-500)">—</td><td>7 day</td><td>UltraTech RMC</td><td><span class="status-badge pending-badge">Pending</span></td><td>Due 2-Jul-24</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-pour">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="font-size:12px;color:var(--gray-500)">Pour ID: PC-T1-5F-SLB-20240601-001</span>
+          <span class="status-badge warn-badge">In progress</span>
+          <span style="font-size:12px;color:var(--gray-500);margin-left:auto">Last saved 2 min ago</span>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">A · Pour identification</div>
+          <div class="form-grid-3">
+            <div class="form-group"><label class="form-label">Tower<span class="req">★</span></label><select class="form-select"><option>T1 — Tower Emerald</option><option>T2</option><option>T3</option></select></div>
+            <div class="form-group"><label class="form-label">Floor<span class="req">★</span></label><select class="form-select"><option>5F</option><option>6F</option><option>4F</option></select></div>
+            <div class="form-group"><label class="form-label">Zone</label><select class="form-select"><option>North Core</option><option>South</option></select></div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Component type<span class="req">★</span></label><select class="form-select"><option>Slab</option><option>Column</option><option>Beam</option><option>Wall</option></select></div>
+            <div class="form-group"><label class="form-label">Component ID<span class="req">★</span></label><input class="form-input" value="T1-5F-SLB-01" readonly style="background:var(--gray-50)"></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">C · Pre-pour checklist</div>
+          <div class="checklist-item"><span>Shuttering inspection</span><div class="seg-btns"><button class="seg-btn active-pass">Yes</button><button class="seg-btn">No</button><button class="seg-btn">NA</button></div></div>
+          <div class="checklist-item"><span>Reinforcement inspection</span><div class="seg-btns"><button class="seg-btn active-pass">Yes</button><button class="seg-btn">No</button></div></div>
+          <div class="checklist-item"><span>Cover block check</span><div class="seg-btns"><button class="seg-btn active-pass">Yes</button><button class="seg-btn">No</button></div></div>
+          <div class="checklist-item"><span>Cleaning of formwork</span><div class="seg-btns"><button class="seg-btn active-pass">Yes</button><button class="seg-btn">No</button></div></div>
+          <div class="checklist-item" style="margin-top:10px"><span style="font-weight:500">Pre-pour approval</span><div class="seg-btns" style="min-width:160px"><button class="seg-btn active-pass" style="flex:2">✓ Approved</button><button class="seg-btn" style="flex:2">✗ Not approved</button></div></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">E · Per-truck record</div>
+          <div class="pour-truck-card">
+            <div class="pour-truck-head"><span class="pour-truck-id">Truck 1 — KA-05-AB-1234</span><span class="status-badge pass-badge" style="font-size:10px">Transit: 35 min ✓</span></div>
+            <div class="pour-truck-grid">
+              <div class="pour-truck-field"><div class="pour-truck-label">Batch ID</div><div class="pour-truck-val">BATCH-20240601-042</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Load volume</div><div class="pour-truck-val">7.0 m³</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Water added</div><div class="pour-truck-val" style="color:var(--green)">None ✓</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Slump</div><div class="pour-truck-val">125 mm</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Slump result</div><div class="pour-truck-val" style="color:var(--green)">Pass</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Cumulative</div><div class="pour-truck-val">7.0 m³</div></div>
+            </div>
+          </div>
+          <div class="pour-truck-card" style="border-color:#FCA5A5">
+            <div class="pour-truck-head"><span class="pour-truck-id">Truck 7 — KA-05-AB-1240</span><span class="transit-warn">Transit: 98 min ⚠</span></div>
+            <div class="pour-truck-grid">
+              <div class="pour-truck-field"><div class="pour-truck-label">Batch ID</div><div class="pour-truck-val">BATCH-20240601-049</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Load volume</div><div class="pour-truck-val">7.0 m³</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Water added</div><div class="pour-truck-val" style="color:var(--red)">Yes — 12 L ⚠</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Slump</div><div class="pour-truck-val">148 mm</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Slump result</div><div class="pour-truck-val" style="color:var(--amber)">At limit</div></div>
+              <div class="pour-truck-field"><div class="pour-truck-label">Cumulative</div><div class="pour-truck-val">49.0 m³</div></div>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="width:100%;border-style:dashed;margin-top:4px"><i class="ti ti-plus" aria-hidden="true"></i> Add truck</button>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">G · Cube sampling</div>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Cube set ID<span class="req">★</span></label><input class="form-input" value="CUBE-T1-5F-20240601-001"></div>
+            <div class="form-group"><label class="form-label">Sampling time<span class="req">★</span></label><input class="form-input" type="time" value="07:00"></div>
+            <div class="form-group"><label class="form-label">Lab assigned<span class="req">★</span></label><select class="form-select"><option>ENVTECH — LAB-2024-003</option></select></div>
+            <div class="form-group"><label class="form-label">No. of cubes cast<span class="req">★</span></label><input class="form-input" value="6" type="number"></div>
+          </div>
+          <div style="margin-top:8px"><label class="form-label">Generated cube IDs</label><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+            <span style="background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:5px;font-size:12px;font-weight:500">C001</span>
+            <span style="background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:5px;font-size:12px;font-weight:500">C002</span>
+            <span style="background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:5px;font-size:12px;font-weight:500">C003</span>
+            <span style="background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:5px;font-size:12px;font-weight:500">C004</span>
+            <span style="background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:5px;font-size:12px;font-weight:500">C005</span>
+            <span style="background:var(--blue-light);color:var(--blue);padding:3px 8px;border-radius:5px;font-size:12px;font-weight:500">C006</span>
+          </div></div>
+          <button class="btn btn-outline btn-sm" style="margin-top:12px"><i class="ti ti-qrcode" aria-hidden="true"></i> Print QR labels (6)</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <button class="btn btn-outline" style="flex:1">Save draft</button>
+          <button class="btn btn-primary" style="flex:2">Submit pour card</button>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-result">
+        <div class="result-banner fail">
+          <div class="result-icon">✗</div>
+          <div>
+            <div class="result-label fail">FAIL — 37.2 MPa</div>
+            <div style="font-size:13px;color:var(--red);margin-top:3px">M40 specified (min individual: 38.5 MPa per IS 456)</div>
+            <div style="font-size:11px;color:var(--gray-500);margin-top:4px">Cube C048 · 28-day test · Tested 29-Jun-2024</div>
+          </div>
+          <div style="margin-left:auto;text-align:right">
+            <div style="font-size:11px;color:var(--gray-500)">Characteristic strength achieved</div>
+            <div style="font-size:22px;font-weight:700;color:var(--red)">93.0%</div>
+            <div style="font-size:10px;color:var(--red)">Below 100% threshold</div>
+          </div>
+        </div>
+        <div class="auto-banner">
+          <div class="auto-field"><label>Result ID</label><span>RES-2024-1045</span></div>
+          <div class="auto-field"><label>Pour card</label><span>PC-T1-5F-SLB-20240601-001</span></div>
+          <div class="auto-field"><label>Location</label><span>T1 · 5F · Slab</span></div>
+          <div class="auto-field"><label>Grade</label><span>M40</span></div>
+          <div class="auto-field"><label>Supplier</label><span>UltraTech RMC Whitefield</span></div>
+          <div class="auto-field"><label>Cast date</label><span>01-Jun-2024</span></div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-box">
+            <div class="chart-title">Test age timeline</div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:11px;color:var(--gray-500);width:45px">7 day</div>
+                <div style="flex:1;height:20px;background:var(--gray-100);border-radius:4px;overflow:hidden"><div style="width:67%;height:100%;background:var(--green);border-radius:4px"></div></div>
+                <div style="font-size:12px;font-weight:500;color:var(--green);width:50px">26.8 MPa</div>
+                <span class="status-badge pass-badge" style="font-size:10px">Pass</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:11px;color:var(--gray-500);width:45px">14 day</div>
+                <div style="flex:1;height:20px;background:var(--gray-100);border-radius:4px;overflow:hidden"><div style="width:80%;height:100%;background:var(--amber);border-radius:4px"></div></div>
+                <div style="font-size:12px;font-weight:500;color:var(--amber);width:50px">32.1 MPa</div>
+                <span class="status-badge warn-badge" style="font-size:10px">Watch</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:11px;color:var(--gray-500);width:45px">28 day</div>
+                <div style="flex:1;height:20px;background:var(--gray-100);border-radius:4px;overflow:hidden"><div style="width:93%;height:100%;background:var(--red);border-radius:4px"></div></div>
+                <div style="font-size:12px;font-weight:500;color:var(--red);width:50px">37.2 MPa</div>
+                <span class="status-badge fail-badge" style="font-size:10px">Fail</span>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin:0">
+            <div style="font-size:12px;font-weight:500;color:var(--gray-900);margin-bottom:10px">Test details</div>
+            <table style="font-size:12px;width:100%">
+              <tr><td style="color:var(--gray-500);padding:4px 0">Failure load</td><td style="text-align:right;font-weight:500">1085 kN</td></tr>
+              <tr><td style="color:var(--gray-500);padding:4px 0">Cross-section area</td><td style="text-align:right;font-weight:500">22,500 mm²</td></tr>
+              <tr><td style="color:var(--gray-500);padding:4px 0">Calculated strength</td><td style="text-align:right;font-weight:500;color:var(--red)">37.2 MPa</td></tr>
+              <tr><td style="color:var(--gray-500);padding:4px 0">Failure pattern</td><td style="text-align:right">Satisfactory (cone)</td></tr>
+              <tr><td style="color:var(--gray-500);padding:4px 0">Tested by</td><td style="text-align:right">Anitha Raj</td></tr>
+              <tr><td style="color:var(--gray-500);padding:4px 0">Lab</td><td style="text-align:right">ENVTECH</td></tr>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="background:var(--red-light);border-color:#FCA5A5">
+          <div style="font-size:13px;font-weight:500;color:var(--red);margin-bottom:10px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Failure actions</div>
+          <div style="font-size:12px;color:var(--red);margin-bottom:10px">NCR auto-raised: <strong>NCR-2024-015</strong> · Notifications sent to QA Manager, PM, Contractor Admin</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" onclick="showScreen('trace')"><i class="ti ti-link" aria-hidden="true"></i> View traceability chain</button>
+            <button class="btn btn-outline btn-sm" onclick="showScreen('ncr')"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Open NCR-2024-015</button>
+            <button class="btn btn-outline btn-sm" onclick="showScreen('chatbot')"><i class="ti ti-message-circle" aria-hidden="true"></i> Ask chatbot: who is responsible?</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-trace">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div>
+            <div style="font-size:12px;font-weight:500;color:var(--gray-500);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.05em">Trace chain — C048</div>
+            <div class="trace-chain">
+              <div class="trace-node">
+                <div class="trace-dot-col"><div class="trace-dot" style="background:var(--red)"></div><div class="trace-line"></div></div>
+                <div class="trace-content" style="border-color:var(--red)">
+                  <div class="trace-node-title">Cube result RES-2024-1045</div>
+                  <div class="trace-node-sub">28-day · 37.2 MPa · FAIL</div>
+                  <div class="confidence-bar"><div class="confidence-fill" style="width:100%;background:var(--green)"></div></div>
+                  <div style="font-size:10px;color:var(--green);margin-top:2px">100% exact match</div>
+                </div>
+              </div>
+              <div class="trace-node">
+                <div class="trace-dot-col"><div class="trace-dot" style="background:var(--blue)"></div><div class="trace-line"></div></div>
+                <div class="trace-content">
+                  <div class="trace-node-title">Cube sample CUBE-T1-5F-20240601-001</div>
+                  <div class="trace-node-sub">Cast 01-Jun-2024 · 07:00 · From Truck KA-05-AB-1234</div>
+                  <div class="confidence-bar"><div class="confidence-fill" style="width:100%;background:var(--green)"></div></div>
+                  <div style="font-size:10px;color:var(--green);margin-top:2px">100% exact — cube ID match</div>
+                </div>
+              </div>
+              <div class="trace-node">
+                <div class="trace-dot-col"><div class="trace-dot" style="background:var(--blue)"></div><div class="trace-line"></div></div>
+                <div class="trace-content">
+                  <div class="trace-node-title">Pour card PC-T1-5F-SLB-20240601-001</div>
+                  <div class="trace-node-sub">01-Jun-2024 · 06:15–14:30 · 83.5 m³ M40</div>
+                  <div class="confidence-bar"><div class="confidence-fill" style="width:100%;background:var(--green)"></div></div>
+                  <div style="font-size:10px;color:var(--green);margin-top:2px">100% exact — pour card ID</div>
+                </div>
+              </div>
+              <div class="trace-node">
+                <div class="trace-dot-col"><div class="trace-dot" style="background:var(--amber)"></div><div class="trace-line"></div></div>
+                <div class="trace-content">
+                  <div class="trace-node-title">Batch BATCH-20240601-042</div>
+                  <div class="trace-node-sub">Dispatched 05:30 · Arrived 06:10 · Transit: 35 min</div>
+                  <div class="confidence-bar"><div class="confidence-fill" style="width:82%;background:var(--amber)"></div></div>
+                  <div style="font-size:10px;color:var(--amber);margin-top:2px">82% fuzzy — batch ticket number</div>
+                </div>
+              </div>
+              <div class="trace-node">
+                <div class="trace-dot-col"><div class="trace-dot" style="background:var(--blue)"></div><div class="trace-line"></div></div>
+                <div class="trace-content">
+                  <div class="trace-node-title">Supplier — UltraTech RMC Whitefield</div>
+                  <div class="trace-node-sub">RMC-2024-007 · Plant: Whitefield · 8.5 km</div>
+                  <div class="confidence-bar"><div class="confidence-fill" style="width:100%;background:var(--green)"></div></div>
+                  <div style="font-size:10px;color:var(--green);margin-top:2px">100% exact — supplier ID</div>
+                </div>
+              </div>
+              <div class="trace-node">
+                <div class="trace-dot-col"><div class="trace-dot" style="background:var(--green)"></div></div>
+                <div class="trace-content">
+                  <div class="trace-node-title">Location — Tower T1 · Floor 5F · Slab</div>
+                  <div class="trace-node-sub">Component T1-5F-SLB-01 · Grid C3-D5 · North Core</div>
+                  <div class="confidence-bar"><div class="confidence-fill" style="width:100%;background:var(--green)"></div></div>
+                  <div style="font-size:10px;color:var(--green);margin-top:2px">100% exact — component ID</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:500;color:var(--gray-500);margin-bottom:12px;text-transform:uppercase;letter-spacing:0.05em">Responsibility analysis</div>
+            <div class="card" style="border-color:var(--amber);margin-bottom:12px">
+              <div style="font-size:12px;font-weight:500;color:var(--amber);margin-bottom:10px"><i class="ti ti-alert-triangle" aria-hidden="true"></i> Probable responsibility signals</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+                  <span style="color:var(--green);font-size:14px;flex-shrink:0">✓</span>
+                  <div><div style="color:var(--gray-900)">Transit time: 35 min</div><div style="color:var(--gray-500);font-size:11px">Within 90 min limit — not a factor</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+                  <span style="color:var(--red);font-size:14px;flex-shrink:0">⚠</span>
+                  <div><div style="color:var(--gray-900)">Supplier failure history</div><div style="color:var(--gray-500);font-size:11px">2 failures in last 30 days, same grade — possible factor</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+                  <span style="color:var(--green);font-size:14px;flex-shrink:0">✓</span>
+                  <div><div style="color:var(--gray-900)">Water addition on site</div><div style="color:var(--gray-500);font-size:11px">None recorded on Truck 1 — not a factor</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+                  <span style="color:var(--red);font-size:14px;flex-shrink:0">⚠</span>
+                  <div><div style="color:var(--gray-900)">w/c ratio discrepancy</div><div style="color:var(--gray-500);font-size:11px">Batch ticket: 0.42 vs specified 0.38 — likely factor</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+                  <span style="color:var(--green);font-size:14px;flex-shrink:0">✓</span>
+                  <div><div style="color:var(--gray-900)">Curing method</div><div style="color:var(--gray-500);font-size:11px">Water ponding started 14:45 — compliant</div></div>
+                </div>
+              </div>
+              <div style="margin-top:12px;padding:10px;background:var(--amber-light);border-radius:7px;font-size:12px;color:var(--amber)">
+                Probable cause: Supplier batch quality (high w/c ratio). Recommend mix design audit + batch record verification.
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button class="btn btn-danger btn-sm" onclick="showScreen('ncr')" style="width:100%"><i class="ti ti-alert-triangle" aria-hidden="true"></i> View NCR-2024-015</button>
+              <button class="btn btn-outline btn-sm" onclick="showScreen('chatbot')" style="width:100%"><i class="ti ti-message-circle" aria-hidden="true"></i> Ask chatbot about this failure</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-ncr">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <span style="font-size:15px;font-weight:600;color:var(--gray-900)">NCR-2024-015</span>
+          <span class="status-badge fail-badge">Critical</span>
+          <span class="status-badge warn-badge">Open</span>
+          <span style="font-size:12px;color:var(--gray-500)">Raised 29-Jun-2024 · Response due 03-Jul-2024</span>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto"><i class="ti ti-check" aria-hidden="true"></i> Close NCR</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:16px">
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:500">1</div><span style="font-size:11px;color:var(--red);font-weight:500">Open</span></div>
+          <div style="flex:1;height:1.5px;background:var(--gray-200)"></div>
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:20px;height:20px;border-radius:50%;background:var(--gray-100);color:var(--gray-500);display:flex;align-items:center;justify-content:center;font-size:10px">2</div><span style="font-size:11px;color:var(--gray-500)">Investigating</span></div>
+          <div style="flex:1;height:1.5px;background:var(--gray-200)"></div>
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:20px;height:20px;border-radius:50%;background:var(--gray-100);color:var(--gray-500);display:flex;align-items:center;justify-content:center;font-size:10px">3</div><span style="font-size:11px;color:var(--gray-500)">Core test</span></div>
+          <div style="flex:1;height:1.5px;background:var(--gray-200)"></div>
+          <div style="display:flex;align-items:center;gap:4px"><div style="width:20px;height:20px;border-radius:50%;background:var(--gray-100);color:var(--gray-500);display:flex;align-items:center;justify-content:center;font-size:10px">4</div><span style="font-size:11px;color:var(--gray-500)">Closed</span></div>
+        </div>
+        <div class="chart-row">
+          <div>
+            <div class="auto-banner" style="margin-bottom:12px">
+              <div class="auto-field"><label>NCR type</label><span>Concrete strength failure</span></div>
+              <div class="auto-field"><label>Source</label><span>Cube test result</span></div>
+              <div class="auto-field"><label>Pour card</label><span>PC-T1-5F-SLB-20240601-001</span></div>
+              <div class="auto-field"><label>Cube result</label><span>RES-2024-1045</span></div>
+            </div>
+            <div class="form-section" style="border-color:var(--red)">
+              <div class="form-section-head" style="color:var(--red)">Non-conformance description</div>
+              <div style="background:var(--red-light);border-radius:7px;padding:12px;font-size:13px;color:var(--red);margin-bottom:12px;line-height:1.6">
+                28-day cube strength = 37.2 MPa vs. specified M40 (40 MPa). Below IS 456:2000 minimum individual acceptance criterion of 38.5 MPa (fck − 1.65σ).
+              </div>
+              <div class="form-grid">
+                <div><div class="form-label">Specified value</div><div style="font-size:13px;font-weight:500;color:var(--gray-900)">fck ≥ 40 MPa (min 38.5 MPa)</div></div>
+                <div><div class="form-label">Actual value</div><div style="font-size:13px;font-weight:500;color:var(--red)">37.2 MPa</div></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="form-section" style="border-color:var(--amber)">
+              <div class="form-section-head">Penalty workflow</div>
+              <div class="form-group"><label class="form-label">Penalty applicable</label>
+                <div class="seg-btns" style="width:100%"><button class="seg-btn active-pass">Yes</button><button class="seg-btn">No</button><button class="seg-btn">Under review</button></div>
+              </div>
+              <div class="form-group"><label class="form-label">Penalty amount (INR)</label><input class="form-input" value="75,000"></div>
+              <div class="form-group"><label class="form-label">Penalty status</label>
+                <select class="form-select"><option>Levied — pending recovery</option><option>Recovered</option><option>Waived</option></select>
+              </div>
+              <div class="form-group"><label class="form-label">Clause reference</label><input class="form-input" value="Clause 14.3 — Quality default"></div>
+            </div>
+            <div class="form-section">
+              <div class="form-section-head">Responsible party</div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                <div class="avatar" style="background:#FDE8E8;color:var(--red)">UT</div>
+                <div><div style="font-size:13px;font-weight:500">UltraTech RMC Whitefield</div><div style="font-size:11px;color:var(--gray-500)">RMC Supplier · RMC-2024-007</div></div>
+              </div>
+              <div style="font-size:12px;color:var(--gray-500)">Notified: <span style="color:var(--gray-900)">QA Manager + Project Manager + PMC</span></div>
+              <div style="font-size:12px;color:var(--gray-500);margin-top:4px">Response deadline: <span style="color:var(--red);font-weight:500">03-Jul-2024 (Overdue)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-gate">
+        <div style="background:var(--gray-50);border-radius:12px;padding:20px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div class="gate-wrap" id="gate-idle">
+              <div class="qr-box"><i class="ti ti-qrcode" style="font-size:48px;color:rgba(255,255,255,0.3)" aria-hidden="true"></i></div>
+              <div class="qr-title">Scan delivery challan</div>
+              <div class="qr-sub">Point camera at the QR code on the challan</div>
+              <button class="btn btn-primary" onclick="simulateScan()" style="padding:12px 32px;font-size:14px"><i class="ti ti-scan" aria-hidden="true"></i> Scan QR</button>
+              <div style="font-size:12px;color:rgba(255,255,255,0.4)">or enter challan number manually</div>
+            </div>
+            <div id="gate-result" style="display:none;flex-direction:column;gap:12px">
+              <div style="background:#DEF7EC;border:0.5px solid #6EE7B7;border-radius:10px;padding:16px;text-align:center">
+                <div style="font-size:28px;color:var(--green);font-weight:700;margin-bottom:4px">✓ Truck arrived</div>
+                <div style="font-size:12px;color:var(--green)">Notifications sent to PM, QH, Supervisor</div>
+              </div>
+              <div class="truck-card">
+                <div class="truck-card-title"><i class="ti ti-truck" style="color:var(--blue)" aria-hidden="true"></i> Challan UC/WF/2024/14567</div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Supplier</span><span class="truck-detail-val">UltraTech RMC Whitefield</span></div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Truck number</span><span class="truck-detail-val">KA-05-AB-1234</span></div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Grade</span><span class="truck-detail-val">M40</span></div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Quantity</span><span class="truck-detail-val">7.0 m³</span></div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Batch ID</span><span class="truck-detail-val">BATCH-20240601-042</span></div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Pour location</span><span class="truck-detail-val">T1 · 5F · Slab</span></div>
+                <div class="truck-detail-row"><span class="truck-detail-key">Arrival time</span><span class="truck-detail-val">06:10</span></div>
+                <div style="display:flex;gap:8px;margin-top:14px">
+                  <button class="btn btn-success" style="flex:1;padding:10px">✓ Confirm arrival</button>
+                  <button class="btn btn-outline btn-sm" style="color:var(--red)">✗ Report issue</button>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="card">
+                <div style="font-size:12px;font-weight:500;color:var(--gray-900);margin-bottom:10px">Today's arrivals</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;align-items:center;gap:10px;font-size:12px;padding:8px;background:var(--green-light);border-radius:7px">
+                    <i class="ti ti-check" style="color:var(--green)" aria-hidden="true"></i>
+                    <div style="flex:1"><div style="font-weight:500">KA-05-AB-1234</div><div style="color:var(--gray-500)">UltraTech · M40 · 7m³</div></div>
+                    <div style="color:var(--gray-500)">06:10</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;font-size:12px;padding:8px;background:var(--gray-50);border-radius:7px;border:0.5px solid var(--gray-200)">
+                    <i class="ti ti-clock" style="color:var(--gray-500)" aria-hidden="true"></i>
+                    <div style="flex:1"><div style="font-weight:500">KA-05-AB-1236</div><div style="color:var(--gray-500)">UltraTech · M40 · 7m³</div></div>
+                    <div style="color:var(--gray-500)">06:45</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;font-size:12px;padding:8px;background:var(--gray-50);border-radius:7px;border:0.5px solid var(--gray-200)">
+                    <i class="ti ti-clock" style="color:var(--gray-500)" aria-hidden="true"></i>
+                    <div style="flex:1"><div style="font-weight:500">KA-05-AB-1238</div><div style="color:var(--gray-500)">UltraTech · M40 · 7m³</div></div>
+                    <div style="color:var(--gray-500)">07:20</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-supplier">
+        <div class="auto-banner">
+          <div class="auto-field"><label>Project ID</label><span>PRJ-2024-001</span></div>
+          <div class="auto-field"><label>Contractor ID</label><span>CON-001</span></div>
+          <div class="auto-field"><label>RMC Registration ID</label><span>RMC-2024-007 (auto)</span></div>
+          <div class="auto-field"><label>Registration Date</label><span>20-Apr-2024 (auto)</span></div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">B · Supplier details</div>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Supplier name<span class="req">★</span></label><input class="form-input" value="UltraTech Cement — RMC Division"></div>
+            <div class="form-group"><label class="form-label">Supplier short code<span class="req">★</span></label><input class="form-input" value="UTC-RMC"></div>
+            <div class="form-group"><label class="form-label">Supplier category<span class="req">★</span></label><select class="form-select"><option>Approved</option><option>Preferred</option><option>Trial</option></select></div>
+            <div class="form-group"><label class="form-label">Plant name<span class="req">★</span></label><input class="form-input" value="UltraTech RMC Plant — Whitefield"></div>
+            <div class="form-group"><label class="form-label">Distance from site (km)<span class="req">★</span></label><input class="form-input" type="number" value="8.5"></div>
+            <div class="form-group"><label class="form-label">Contact person<span class="req">★</span></label><input class="form-input" value="Anand Kumar"></div>
+            <div class="form-group"><label class="form-label">Contact phone<span class="req">★</span></label><input class="form-input" value="+91-9900112233"></div>
+            <div class="form-group"><label class="form-label">Contact email<span class="req">★</span></label><input class="form-input" value="anand.kumar@utcrmc.com"></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">C · Plant capabilities</div>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Batching plant capacity (m³/hr)</label><input class="form-input" value="60" type="number"></div>
+            <div class="form-group"><label class="form-label">Transit mixer count</label><input class="form-input" value="25" type="number"></div>
+            <div class="form-group"><label class="form-label">Transit mixer volume (m³)<span class="req">★</span></label><select class="form-select"><option>7</option><option>7.5</option><option>8</option><option>9</option></select></div>
+            <div class="form-group"><label class="form-label">Pump availability</label><select class="form-select"><option>Yes</option><option>No</option></select></div>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">BIS certification (IS 4926)<span class="req">★</span></label>
+              <div class="toggle" style="margin-top:4px"><div class="toggle-track on" onclick="this.classList.toggle('on')"><div class="toggle-thumb"></div></div> BIS certified</div>
+              <div style="margin-top:8px;display:flex;gap:8px">
+                <input class="form-input" placeholder="Cert number" value="BIS/RMC/2023/456" style="flex:1">
+                <input class="form-input" type="date" value="2026-03-31" style="flex:1">
+              </div>
+            </div>
+            <div class="form-group"><label class="form-label">NABL lab at plant</label><div class="toggle" style="margin-top:4px"><div class="toggle-track" onclick="this.classList.toggle('on')"><div class="toggle-thumb"></div></div> NABL accredited lab on site</div></div>
+          </div>
+        </div>
+        <div class="form-section">
+          <div class="form-section-head">D · Mix design details</div>
+          <div class="card" style="border-color:var(--blue);margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+              <span style="font-size:12px;font-weight:500">Mix design 1 — MD-UTC-M40-001</span>
+              <div style="display:flex;gap:6px"><span class="status-badge pass-badge" style="font-size:10px">Approved</span><button class="btn btn-outline btn-sm" style="font-size:10px;padding:3px 8px">Expand</button></div>
+            </div>
+            <div class="form-grid-3">
+              <div class="form-group"><label class="form-label">Grade<span class="req">★</span></label><select class="form-select"><option>M40</option><option>M30</option><option>M50</option></select></div>
+              <div class="form-group"><label class="form-label">Mix type<span class="req">★</span></label><select class="form-select"><option>Pumpable</option><option>Normal</option></select></div>
+              <div class="form-group"><label class="form-label">w/c ratio<span class="req">★</span></label><input class="form-input" value="0.38" type="number"></div>
+              <div class="form-group"><label class="form-label">Slump range<span class="req">★</span></label><input class="form-input" value="100–150 mm"></div>
+              <div class="form-group"><label class="form-label">Rate/m³ (INR)<span class="req">★</span></label><input class="form-input" value="6200" type="number"></div>
+              <div class="form-group"><label class="form-label">Validity to<span class="req">★</span></label><input class="form-input" type="date" value="2024-10-31"></div>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" style="border-style:dashed;width:100%"><i class="ti ti-plus" aria-hidden="true"></i> Add mix design</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <button class="btn btn-outline" style="flex:1">Save draft</button>
+          <button class="btn btn-primary" style="flex:2">Submit for approval</button>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-chatbot">
+        <div class="chat-wrap">
+          <div class="chat-panel">
+            <div style="padding:12px 16px;border-bottom:0.5px solid var(--gray-200);display:flex;align-items:center;gap:8px">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">Q</div>
+              <div><div style="font-size:13px;font-weight:500">QMS assistant</div><div style="font-size:10px;color:var(--gray-500)">Answers from your project data only</div></div>
+              <span class="status-badge pass-badge" style="margin-left:auto;font-size:10px">Online</span>
+            </div>
+            <div class="chat-msgs" id="chatmsgs">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+                <button class="btn btn-outline btn-sm" onclick="sendChatQ('Which supplier provided M40 for Tower T1 Floor 5?')" style="font-size:11px">Which supplier for T1-5F M40? ↗</button>
+                <button class="btn btn-outline btn-sm" onclick="sendChatQ('What was the 28-day strength of cube C048?')" style="font-size:11px">28-day result for C048? ↗</button>
+                <button class="btn btn-outline btn-sm" onclick="sendChatQ('Who is responsible for the failure at T1-5F-SLB-01?')" style="font-size:11px">Who caused the T1-5F failure? ↗</button>
+                <button class="btn btn-outline btn-sm" onclick="sendChatQ('Which batches failed this month?')" style="font-size:11px">Failures this month? ↗</button>
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input class="chat-input" id="chatinput" placeholder="Ask about any pour, cube result, supplier, or NCR..." onkeydown="if(event.key==='Enter')sendChat()">
+              <button class="btn btn-primary btn-sm" onclick="sendChat()"><i class="ti ti-send" aria-hidden="true"></i></button>
+            </div>
+          </div>
+          <div class="ctx-panel">
+            <div class="ctx-title">Context data</div>
+            <div id="ctx-content">
+              <div class="ctx-card"><div class="ctx-card-title">Project</div><div class="ctx-card-val" style="font-size:12px;color:var(--blue)">Godrej Splendour Phase 2</div></div>
+              <div class="ctx-card"><div class="ctx-card-title">Total pours indexed</div><div class="ctx-card-val">247</div></div>
+              <div class="ctx-card"><div class="ctx-card-title">Cube results</div><div class="ctx-card-val">1,842</div></div>
+              <div class="ctx-card"><div class="ctx-card-title">Documents in RAG</div><div class="ctx-card-val">384 PDFs</div></div>
+              <div style="font-size:11px;color:var(--gray-500);margin-top:8px;line-height:1.5">Context panel updates with source data for each answer.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="screen" id="screen-analytics">
+        <div class="kpi-grid">
+          <div class="kpi-card"><div class="kpi-label">Pass rate (Jun)</div><div class="kpi-value" style="color:var(--green)">91.4%</div><div class="kpi-delta up">↑ +2.1% vs May</div></div>
+          <div class="kpi-card"><div class="kpi-label">Tests this month</div><div class="kpi-value">142</div><div class="kpi-delta up">↑ 28 more than May</div></div>
+          <div class="kpi-card"><div class="kpi-label">Failures</div><div class="kpi-value" style="color:var(--red)">12</div><div class="kpi-delta down">3 critical, 9 major</div></div>
+          <div class="kpi-card"><div class="kpi-label">Pending tests</div><div class="kpi-value" style="color:var(--amber)">14</div><div class="kpi-delta warn">3 overdue today</div></div>
+          <div class="kpi-card"><div class="kpi-label">Open NCRs</div><div class="kpi-value" style="color:var(--red)">3</div><div class="kpi-delta down">2 overdue response</div></div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-box">
+            <div class="chart-title">Tower-wise failure heatmap</div>
+            <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-top:6px">
+              <div style="font-size:9px;color:var(--gray-500)"></div>
+              <div style="font-size:9px;color:var(--gray-500);text-align:center">B1</div>
+              <div style="font-size:9px;color:var(--gray-500);text-align:center">GF</div>
+              <div style="font-size:9px;color:var(--gray-500);text-align:center">2F</div>
+              <div style="font-size:9px;color:var(--gray-500);text-align:center">4F</div>
+              <div style="font-size:9px;color:var(--gray-500);text-align:center">5F</div>
+              <div style="font-size:9px;color:var(--gray-500)">T1</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#FDF6B2;color:#C27803">4%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">2%</div>
+              <div class="heatmap-cell" style="background:#FDE8E8;color:#C81E1E">8%</div>
+              <div style="font-size:9px;color:var(--gray-500)">T2</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#FDF6B2;color:#C27803">3%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">1%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#FDF6B2;color:#C27803">5%</div>
+              <div style="font-size:9px;color:var(--gray-500)">T3</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">2%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">0%</div>
+              <div class="heatmap-cell" style="background:#DEF7EC;color:#057A55">1%</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;font-size:10px;color:var(--gray-500)">
+              <span style="display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;background:#DEF7EC;border-radius:2px;display:inline-block"></span>0–3%</span>
+              <span style="display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;background:#FDF6B2;border-radius:2px;display:inline-block"></span>3–6%</span>
+              <span style="display:flex;align-items:center;gap:3px"><span style="width:10px;height:10px;background:#FDE8E8;border-radius:2px;display:inline-block"></span>6%+</span>
+            </div>
+          </div>
+          <div class="chart-box">
+            <div class="chart-title">Grade-wise pass rate breakdown</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+              <div style="display:flex;align-items:center;gap:10px;font-size:12px"><div style="width:32px;color:var(--gray-500)">M50</div><div style="flex:1;height:18px;background:var(--gray-100);border-radius:3px;overflow:hidden"><div style="width:97%;height:100%;background:var(--green);border-radius:3px"></div></div><div style="width:35px;text-align:right;font-weight:500;color:var(--green)">97%</div></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:12px"><div style="width:32px;color:var(--gray-500)">M40</div><div style="flex:1;height:18px;background:var(--gray-100);border-radius:3px;overflow:hidden"><div style="width:91%;height:100%;background:var(--green);border-radius:3px"></div></div><div style="width:35px;text-align:right;font-weight:500;color:var(--green)">91%</div></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:12px"><div style="width:32px;color:var(--gray-500)">M35</div><div style="flex:1;height:18px;background:var(--gray-100);border-radius:3px;overflow:hidden"><div style="width:88%;height:100%;background:var(--amber);border-radius:3px"></div></div><div style="width:35px;text-align:right;font-weight:500;color:var(--amber)">88%</div></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:12px"><div style="width:32px;color:var(--gray-500)">M30</div><div style="flex:1;height:18px;background:var(--gray-100);border-radius:3px;overflow:hidden"><div style="width:94%;height:100%;background:var(--green);border-radius:3px"></div></div><div style="width:35px;text-align:right;font-weight:500;color:var(--green)">94%</div></div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:12px"><div style="width:32px;color:var(--gray-500)">M25</div><div style="flex:1;height:18px;background:var(--gray-100);border-radius:3px;overflow:hidden"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><div style="width:35px;text-align:right;font-weight:500;color:var(--green)">96%</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="section-head"><div class="section-title">Recent failures requiring action</div><button class="btn btn-outline btn-sm"><i class="ti ti-download" aria-hidden="true"></i> Export report</button></div>
+        <div class="card" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cube ID</th><th>Location</th><th>Grade</th><th>Strength</th><th>Supplier</th><th>NCR status</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr class="severity-row-critical"><td style="font-weight:500">C048</td><td>T1 · 5F · Slab</td><td>M40</td><td style="color:var(--red);font-weight:500">37.2 MPa</td><td>UltraTech RMC</td><td><span class="status-badge fail-badge">Open · NCR-015</span></td><td><button class="btn btn-outline btn-sm" onclick="showScreen('trace')" style="font-size:11px">View trace</button></td></tr>
+                <tr class="severity-row-major"><td style="font-weight:500">C031</td><td>T2 · 3F · Column</td><td>M35</td><td style="color:var(--amber);font-weight:500">32.1 MPa</td><td>ACC Concrete</td><td><span class="status-badge warn-badge">Investigating</span></td><td><button class="btn btn-outline btn-sm" style="font-size:11px">View NCR</button></td></tr>
+                <tr class="severity-row-minor"><td style="font-weight:500">C019</td><td>T1 · 3F · Beam</td><td>M30</td><td style="color:var(--amber);font-weight:500">28.8 MPa</td><td>Premia RMC</td><td><span class="status-badge pass-badge">Closed</span></td><td><button class="btn btn-outline btn-sm" style="font-size:11px">View record</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const screens = ['dashboard','pour','result','trace','ncr','gate','supplier','chatbot','analytics'];
+const titles = {dashboard:'Dashboard',pour:'New pour card — PC-T1-5F-SLB-20240601-001',result:'Cube result — C048 (FAIL)',trace:'Traceability chain — Cube C048',ncr:'NCR-2024-015 — Concrete strength failure',gate:'Gate scanning',supplier:'RMC supplier registration',chatbot:'QMS assistant',analytics:'Analytics'};
+
+function showScreen(id){
+  screens.forEach(s=>{
+    const el=document.getElementById('screen-'+s);
+    const nav=document.getElementById('nav-'+s);
+    if(el) el.classList.toggle('active', s===id);
+    if(nav) nav.classList.toggle('active', s===id);
+  });
+  document.querySelectorAll('.screen-nav-btn').forEach(b=>{
+    b.classList.toggle('active', b.textContent.toLowerCase().replace(/ /g,'').includes(id.replace(/-/g,'').toLowerCase()) || (id==='result'&&b.textContent.includes('result')) || (id==='trace'&&b.textContent.includes('trace')));
+  });
+  if(titles[id]) document.getElementById('page-title').textContent=titles[id];
+}
+
+function simulateScan(){
+  document.getElementById('gate-idle').style.display='none';
+  document.getElementById('gate-result').style.display='flex';
+}
+
+const chatResponses = {
+  'Which supplier provided M40 for Tower T1 Floor 5?': {
+    ans: 'UltraTech RMC Whitefield (RMC-2024-007) supplied M40 concrete for Tower T1, Floor 5F pour on 01-Jun-2024. Mix design MD-UTC-M40-001, batch BATCH-20240601-042.',
+    sources: ['Pour Card PC-T1-5F-SLB-20240601-001','RMC Reg RMC-2024-007'],
+    intent: 'Traceability',
+    ctx: [{t:'Supplier',v:'UltraTech RMC Whitefield'},{t:'Grade',v:'M40'},{t:'Mix design',v:'MD-UTC-M40-001'},{t:'Pour date',v:'01-Jun-2024'}]
+  },
+  'What was the 28-day strength of cube C048?': {
+    ans: '37.2 MPa — this is a FAIL result. M40 grade requires minimum individual acceptance strength of 38.5 MPa per IS 456:2000. NCR-2024-015 has been raised.',
+    sources: ['Cube Result RES-2024-1045','Lab Report ENV/CC/2024/3421'],
+    intent: 'Quality',
+    ctx: [{t:'Specified fck',v:'40 MPa'},{t:'Actual strength',v:'37.2 MPa (FAIL)'},{t:'Min acceptance',v:'38.5 MPa'},{t:'NCR',v:'NCR-2024-015 (Open)'}]
+  },
+  'Who is responsible for the failure at T1-5F-SLB-01?': {
+    ans: 'Based on analysis, probable cause is supplier batch quality from UltraTech RMC Whitefield. Batch ticket shows w/c ratio of 0.42 vs specified 0.38. This supplier also had 2 other failures in the last 30 days for M40 grade. Transit time (35 min) and site water addition (none) are not contributing factors.',
+    sources: ['Trace Chain C048','Batch Ticket BATCH-20240601-042','Supplier History RMC-2024-007'],
+    intent: 'Responsibility',
+    ctx: [{t:'Probable cause',v:'Supplier batch quality'},{t:'w/c deviation',v:'0.42 vs 0.38 specified'},{t:'Supplier failures (30d)',v:'3 (same grade)'},{t:'Confidence',v:'82%'}]
+  },
+  'Which batches failed this month?': {
+    ans: '3 batches failed in June 2024: BATCH-20240601-042 (T1-5F, M40, 37.2 MPa), BATCH-20240615-031 (T2-3F, M35, 32.1 MPa), and BATCH-20240620-019 (T1-3F, M30, 28.8 MPa). Total failure rate this month: 8.6% (12 of 142 tests).',
+    sources: ['Monthly Quality Report Jun-2024','Cube Results Database'],
+    intent: 'Analytics',
+    ctx: [{t:'Total failures Jun',v:'12 / 142 tests'},{t:'Failure rate',v:'8.6%'},{t:'Critical failures',v:'3'},{t:'Open NCRs',v:'3'}]
+  }
+};
+
+function sendChatQ(q){
+  document.getElementById('chatinput').value=q;
+  sendChat();
+}
+
+function sendChat(){
+  const input=document.getElementById('chatinput');
+  const q=input.value.trim();
+  if(!q) return;
+  const msgs=document.getElementById('chatmsgs');
+  msgs.innerHTML+=`<div class="msg user"><div class="msg-bubble">${q}</div></div>`;
+  input.value='';
+  msgs.innerHTML+=`<div class="msg bot" id="thinking"><div class="msg-bubble" style="color:var(--gray-500)"><i class="ti ti-dots" aria-hidden="true"></i> Querying project data...</div></div>`;
+  msgs.scrollTop=msgs.scrollHeight;
+  const resp=chatResponses[q]||{ans:'I found relevant data for your query. Based on the project records, this falls under the '+q.split(' ')[0].toLowerCase()+' workflow. Could you be more specific about which tower, floor, or time period you mean?',sources:['Project Database'],intent:'General',ctx:[{t:'Query type',v:'General'},{t:'Status',v:'Partial match'}]};
+  setTimeout(()=>{
+    document.getElementById('thinking').remove();
+    const srcHtml=resp.sources.map(s=>`<span class="src-chip">${s}</span>`).join('');
+    msgs.innerHTML+=`<div class="msg bot"><div style="display:flex;gap:6px;margin-bottom:4px"><span class="status-badge info-badge" style="font-size:10px">${resp.intent}</span></div><div class="msg-bubble">${resp.ans}</div><div class="msg-sources">${srcHtml}</div></div>`;
+    msgs.scrollTop=msgs.scrollHeight;
+    const ctx=document.getElementById('ctx-content');
+    ctx.innerHTML='<div class="ctx-title" style="margin-top:0">Answer context</div>'+resp.ctx.map(c=>`<div class="ctx-card"><div class="ctx-card-title">${c.t}</div><div class="ctx-card-val" style="font-size:13px">${c.v}</div></div>`).join('');
+  },800);
+}
+</script>

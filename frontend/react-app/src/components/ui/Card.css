@@ -1,0 +1,28 @@
+.qms-card {
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+.qms-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.qms-card--p-none {
+  padding: 0;
+}
+
+.qms-card--p-sm {
+  padding: 12px;
+}
+
+.qms-card--p-md {
+  padding: 20px;
+}
+
+.qms-card--p-lg {
+  padding: 32px;
+}

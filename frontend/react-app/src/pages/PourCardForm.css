@@ -1,0 +1,182 @@
+.qms-pour-form {
+  max-width: 800px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+}
+
+.qms-pour-header {
+  margin-bottom: 20px;
+}
+
+.qms-pour-id-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.qms-ml-auto {
+  margin-left: auto;
+}
+
+.qms-form-section {
+  margin-bottom: 16px;
+}
+
+.qms-section-heading {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.qms-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.qms-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* Checklist */
+.qms-checklist {
+  display: flex;
+  flex-direction: column;
+}
+
+.qms-check-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 14px;
+  color: var(--gray-700);
+}
+
+.qms-check-item:last-child {
+  border-bottom: none;
+}
+
+.qms-mt-4 { margin-top: 16px; }
+
+.qms-seg-group {
+  display: flex;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.qms-seg-group--large {
+  min-width: 180px;
+}
+
+.qms-seg-btn {
+  flex: 1;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  background: #fff;
+  color: var(--gray-500);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.qms-seg-btn--pass {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.qms-seg-btn--fail {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.qms-seg-btn--na {
+  background: var(--gray-100);
+  color: var(--gray-600);
+}
+
+/* Truck Card */
+.qms-truck-card {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.qms-truck-card--danger {
+  border-color: #FCA5A5;
+  background: #FEF2F2;
+}
+
+.qms-truck-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.qms-truck-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.qms-truck-field {
+  font-size: 12px;
+}
+
+.qms-truck-label {
+  color: var(--gray-500);
+  margin-bottom: 2px;
+}
+
+.qms-truck-val {
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.qms-dashed-btn {
+  border-style: dashed;
+  border-width: 1.5px;
+  margin-top: 8px;
+}
+
+/* Cube Tags */
+.qms-cube-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.qms-cube-tag {
+  background: var(--blue-light);
+  color: var(--blue);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.qms-form-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}

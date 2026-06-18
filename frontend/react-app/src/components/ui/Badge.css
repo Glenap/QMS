@@ -1,0 +1,46 @@
+.qms-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.qms-badge-icon {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+.qms-badge--default {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.qms-badge--pass {
+  background: var(--green-light);
+  color: var(--green);
+}
+
+.qms-badge--fail {
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.qms-badge--warn {
+  background: var(--amber-light);
+  color: var(--amber);
+}
+
+.qms-badge--info {
+  background: var(--blue-light);
+  color: var(--blue);
+}
+
+.qms-badge--pending {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
