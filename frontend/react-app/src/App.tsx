@@ -21,9 +21,12 @@ import { ProjectLayout } from './components/layout/ProjectLayout';
 import { ProjectOverview } from './pages/project/ProjectOverview';
 import { ProjectTeam } from './pages/project/ProjectTeam';
 import { ProjectContractors } from './pages/project/ProjectContractors';
+import { ContractorDetail } from './pages/project/ContractorDetail';
 import { ProjectSuppliers } from './pages/project/ProjectSuppliers';
+import { SupplierDetail } from './pages/project/SupplierDetail';
 import { ProjectLabs } from './pages/project/ProjectLabs';
 import { ProjectMixDesigns } from './pages/project/ProjectMixDesigns';
+import { ProjectFloors } from './pages/project/ProjectFloors';
 import { Analytics } from './pages/Analytics';
 import { DocumentManagement } from './pages/DocumentManagement';
 import { AuditManagement } from './pages/AuditManagement';
@@ -77,8 +80,11 @@ function App() {
               <Route path="chatbot" element={<Chatbot />} />
               <Route path="team" element={<ProjectTeam />} />
               <Route path="contractors" element={<ProjectContractors />} />
+              <Route path="contractors/:contractorOrgId" element={<ContractorDetail />} />
               <Route path="suppliers" element={<ProjectSuppliers />} />
+              <Route path="suppliers/:supplierId" element={<SupplierDetail />} />
               <Route path="labs" element={<ProjectLabs />} />
+              <Route path="floors" element={<ProjectFloors />} />
               <Route path="mix-designs" element={<ProjectMixDesigns />} />
             </Route>
 

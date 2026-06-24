@@ -31,8 +31,15 @@ export const Topbar: React.FC<TopbarProps> = ({ title }) => {
           <div className="qms-notif-dot"></div>
         </div>
 
-        <div className="qms-avatar qms-avatar--clickable" title={user?.full_name ?? ''}>
-          {initials(user?.full_name)}
+        <div
+          className="qms-avatar qms-avatar--clickable"
+          role="button"
+          aria-label="View profile"
+          title={user?.full_name ? `${user.full_name} — view profile` : 'View profile'}
+          onClick={() => navigate('/app/profile')}
+          style={user?.avatar_url ? { background: `center / cover no-repeat url(${user.avatar_url})` } : undefined}
+        >
+          {!user?.avatar_url && initials(user?.full_name)}
         </div>
         <Button variant="ghost" size="sm" icon={<LogOut size={14} />} onClick={handleLogout}>
           Log out

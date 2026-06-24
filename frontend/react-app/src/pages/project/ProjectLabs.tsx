@@ -33,6 +33,7 @@ export const ProjectLabs: React.FC = () => {
   const [resendingId, setResendingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
@@ -70,6 +71,7 @@ export const ProjectLabs: React.FC = () => {
           : `Lab "${l.lab_name}" registered. Add a contact email to send a confirmation request.`,
       );
       setForm({ ...EMPTY });
+      setShowForm(false);
       void load();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to register lab.'));
@@ -98,7 +100,7 @@ export const ProjectLabs: React.FC = () => {
       {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
       {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
 
-      {canManage && (
+      {canManage && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Register a testing lab</h3>
           <form onSubmit={handleSubmit} className="qms-grid-2">
@@ -112,9 +114,12 @@ export const ProjectLabs: React.FC = () => {
             <Input label="State" value={form.state} onChange={set('state')} />
             <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
             <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
-            <div style={{ gridColumn: 'span 2' }}>
+            <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
               <Button type="submit" variant="primary" disabled={submitting} icon={<Plus size={16} />}>
                 {submitting ? 'Registering…' : 'Register lab'}
+              </Button>
+              <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+                Cancel
               </Button>
             </div>
           </form>
@@ -122,7 +127,14 @@ export const ProjectLabs: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b"><h3 className="qms-section-heading-plain">Testing labs</h3></div>
+        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <h3 className="qms-section-heading-plain">Testing labs</h3>
+          {canManage && !showForm && (
+            <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
+              Register lab
+            </Button>
+          )}
+        </div>
         <div className="qms-table-container">
           <table className="qms-table">
             <thead><tr><th>Lab</th><th>Hired by</th><th>Type</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>

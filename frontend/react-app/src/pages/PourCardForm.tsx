@@ -4,7 +4,7 @@
 // Pre-pour checklist, per-truck logging and cube sampling arrive in later
 // phases (dispatch + cube tests) once those models are wired.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -98,6 +98,23 @@ export const PourCardForm: React.FC = () => {
     return () => { cancelled = true; };
   }, [pid, towerId]);
 
+  // A contractor only works on their allotted towers — restrict the picker to
+  // those. Clients and whole-project contractors (scope null / "Entire project")
+  // see every tower.
+  const visibleTowers = useMemo(() => {
+    const scope = project.assigned_scope;
+    if (!scope || scope === 'Entire project') return towers;
+    const allowed = new Set(scope.split(',').map((s) => s.trim()));
+    return towers.filter((t) => allowed.has(t.tower_name));
+  }, [towers, project.assigned_scope]);
+
+  // When the contractor is assigned a single tower, the client has effectively
+  // chosen it for them — auto-fill and lock the picker (it's passed on, not a choice).
+  const towerLocked = visibleTowers.length === 1;
+  useEffect(() => {
+    if (!towerId && visibleTowers.length === 1) setTowerId(String(visibleTowers[0].tower_id));
+  }, [visibleTowers, towerId]);
+
   // Pour cards are raised by the Quality Engineer only.
   if (user && user.role !== 'QUALITY_ENGINEER') {
     return <Navigate to={`/app/projects/${pid}`} replace />;
@@ -143,12 +160,23 @@ export const PourCardForm: React.FC = () => {
       <Card className="qms-form-section">
         <h3 className="qms-section-heading">A · Pour identification</h3>
         <div className="qms-grid-3">
-          <Select label="Tower" required value={towerId} onChange={(e) => setTowerId(e.target.value)} options={[
-            { label: towers.length ? 'Select tower…' : 'No towers yet', value: '' },
-            ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id })),
-          ]} />
+          <Select
+            label="Tower"
+            required
+            value={towerId}
+            disabled={towerLocked}
+            onChange={(e) => setTowerId(e.target.value)}
+            options={
+              towerLocked
+                ? visibleTowers.map((t) => ({ label: t.tower_name, value: t.tower_id }))
+                : [
+                    { label: visibleTowers.length ? 'Select tower…' : 'No towers assigned to you', value: '' },
+                    ...visibleTowers.map((t) => ({ label: t.tower_name, value: t.tower_id })),
+                  ]
+            }
+          />
           <Select label="Floor" required value={floorId} onChange={(e) => setFloorId(e.target.value)} options={[
-            { label: !towerId ? 'Pick a tower first' : floors.length ? 'Select floor…' : 'No floors — add them in Setup', value: '' },
+            { label: !towerId ? 'Pick a tower first' : floors.length ? 'Select floor…' : 'No floors — add them in Setup › Floors', value: '' },
             ...floors.map((f) => ({ label: f.floor_label, value: f.floor_id })),
           ]} />
           <Select label="Component type" required value={componentId} onChange={(e) => setComponentId(e.target.value)} options={[

@@ -18,6 +18,7 @@ import {
   Inbox,
   ChevronLeft,
   Layers,
+  Building2,
   FlaskConical,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
@@ -105,6 +106,7 @@ export const Sidebar: React.FC = () => {
           )}
           <NavLink to={`${base}/suppliers`} className={item}><Truck size={18} /> Suppliers</NavLink>
           <NavLink to={`${base}/labs`} className={item}><Building size={18} /> Laboratories</NavLink>
+          <NavLink to={`${base}/floors`} className={item}><Building2 size={18} /> Floors</NavLink>
           <NavLink to={`${base}/mix-designs`} className={item}><FlaskConical size={18} /> Mix designs</NavLink>
 
           <div className="qms-nav-section">AI</div>

@@ -168,6 +168,23 @@ export interface AssignedProject {
   assigned_at: string;
 }
 
+// A project an existing contractor is already engaged on (busy-warning popup).
+export interface ContractorEngagement {
+  project_id: number;
+  project_name: string;
+  start_date: string | null; // ISO date
+  end_date: string | null;   // ISO date
+  status: ContractorLinkStatus; // PENDING | ACCEPTED
+}
+
+// A contractor org the client may re-use on another project.
+export interface AvailableContractor {
+  contractor_org_id: number;
+  org_name: string;
+  contact_email: string | null;
+  engagements: ContractorEngagement[];
+}
+
 // ── Suppliers ─────────────────────────────────────────────────────────────
 
 export interface SupplierCreate {

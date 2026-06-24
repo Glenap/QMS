@@ -4,6 +4,7 @@
 import { api } from './client';
 import type {
   AssignedProject,
+  AvailableContractor,
   ProjectContractor,
   ProjectContractorCreate,
   ProjectCreate,
@@ -44,6 +45,10 @@ export const projectsApi = {
   // ── Contractors (client side) ──────────────────────────────────────────────
   contractors(id: number): Promise<ProjectContractor[]> {
     return api.get<ProjectContractor[]>(`/projects/${id}/contractors`).then((r) => r.data);
+  },
+  // Reusable contractor orgs (not yet on this project) + their other engagements.
+  availableContractors(id: number): Promise<AvailableContractor[]> {
+    return api.get<AvailableContractor[]>(`/projects/${id}/available-contractors`).then((r) => r.data);
   },
   addContractor(id: number, data: ProjectContractorCreate): Promise<ProjectContractor> {
     return api.post<ProjectContractor>(`/projects/${id}/contractors`, data).then((r) => r.data);

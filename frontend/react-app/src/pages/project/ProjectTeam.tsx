@@ -49,6 +49,7 @@ export const ProjectTeam: React.FC = () => {
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
 
   // Org admins can offboard members of their own org/side. Mirrors the backend
   // (POST /auth/users/{id}/deactivate requires is_org_admin + same org).
@@ -105,6 +106,7 @@ export const ProjectTeam: React.FC = () => {
           : `${m.email} added as ${projectRoleLabel(role)}.`
       );
       setEmail('');
+      setShowForm(false);
       void load();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to assign member.'));
@@ -120,18 +122,21 @@ export const ProjectTeam: React.FC = () => {
       {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
       {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
 
-      {assignable.length > 0 && (
+      {assignable.length > 0 && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Assign a team member</h3>
           <form onSubmit={handleSubmit} className="qms-grid-2">
             <Input label="Email" type="email" required placeholder="person@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Select label="Role" required value={role} onChange={(e) => setRole(e.target.value as ProjectRoleValue)}
               options={assignable.map((r) => ({ label: projectRoleLabel(r), value: r }))} />
-            <div style={{ gridColumn: 'span 2' }}>
+            <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Button type="submit" variant="primary" disabled={submitting} icon={<UserPlus size={16} />}>
                 {submitting ? 'Assigning…' : 'Assign / Invite'}
               </Button>
-              <span className="qms-text-sm text-muted" style={{ marginLeft: 12 }}>
+              <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+                Cancel
+              </Button>
+              <span className="qms-text-sm text-muted" style={{ marginLeft: 4 }}>
                 Existing company users are added directly; new emails get an invitation.
               </span>
             </div>
@@ -140,8 +145,13 @@ export const ProjectTeam: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b">
+        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <h3 className="qms-section-heading-plain">Team members</h3>
+          {assignable.length > 0 && !showForm && (
+            <Button variant="primary" size="sm" icon={<UserPlus size={15} />} onClick={() => setShowForm(true)}>
+              Assign member
+            </Button>
+          )}
         </div>
         <div className="qms-table-container">
           <table className="qms-table">

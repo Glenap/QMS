@@ -392,54 +392,9 @@ export const ProjectMasterForm: React.FC = () => {
         </div>
       </Card>
 
-      <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b">
-          <div className="qms-section-header-toggle" style={{ marginBottom: 4 }}>
-            <h3 className="qms-section-heading-plain">E · FLOOR / ZONE / COMPONENT MASTER</h3>
-            <ChevronUp size={16} className="text-muted" />
-          </div>
-          <p className="qms-text-sm text-muted">Floor / zone / component breakdown is captured in a later phase — not saved with the project yet.</p>
-        </div>
-        <div className="qms-table-container">
-          <table className="qms-table">
-            <thead>
-              <tr>
-                <th>Tower ID *</th>
-                <th>Floor Label *</th>
-                <th>Zone</th>
-                <th>Grid Ref</th>
-                <th>Comp Type *</th>
-                <th>Comp ID *</th>
-                <th>Concrete Grade *</th>
-                <th>Vol m³</th>
-                <th>Reinf Grade</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><Select options={[{label:'T1',value:'T1'}]} /></td>
-                <td><Input /></td>
-                <td><Input /></td>
-                <td><Input /></td>
-                <td><Select options={[{label:'Slab',value:'Slab'}, {label:'Column',value:'Column'}]} /></td>
-                <td><Input /></td>
-                <td><Select options={[{label:'M40',value:'M40'}, {label:'M30',value:'M30'}]} /></td>
-                <td><Input type="number" /></td>
-                <td><Select options={[{label:'Fe500',value:'Fe500'}]} /></td>
-                <td><Button type="button" variant="ghost" icon={<Trash2 size={16} className="text-danger" />} /></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div className="qms-p-4">
-          <Button type="button" variant="outline" className="qms-dashed-btn" icon={<Plus size={16} />} disabled>Add Component</Button>
-        </div>
-      </Card>
-
       <Card className="qms-form-section">
         <div className="qms-section-header-toggle">
-          <h3 className="qms-section-heading-plain">F · QUALITY PARAMETERS</h3>
+          <h3 className="qms-section-heading-plain">E · QUALITY PARAMETERS</h3>
           <ChevronUp size={16} className="text-muted" />
         </div>
         <div className="qms-grid-2">

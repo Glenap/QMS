@@ -89,7 +89,7 @@ export const Profile: React.FC = () => {
   );
 
   return (
-    <div style={{ maxWidth: 560 }}>
+    <div style={{ maxWidth: 560, margin: '0 auto' }}>
       <div className="qms-page-header-block">
         <div>
           <h2 className="qms-section-heading-plain">My profile</h2>

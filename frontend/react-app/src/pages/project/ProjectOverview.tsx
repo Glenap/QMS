@@ -80,6 +80,21 @@ export const ProjectOverview: React.FC = () => {
   return (
     <div className="qms-dashboard">
       <div className="qms-kpi-grid">
+        {quickLinks.map((q) => (
+          <Card key={q.label} padding="sm" className="qms-kpi-card" onClick={() => navigate(q.to)} style={{ cursor: 'pointer' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="text-muted">{q.icon}</span>
+                <span style={{ fontWeight: 600 }}>{q.label}</span>
+              </div>
+              <ChevronRight size={16} className="text-muted" />
+            </div>
+            {q.count != null && <div className="qms-kpi-value" style={{ fontSize: 22, marginTop: 4 }}>{q.count}</div>}
+          </Card>
+        ))}
+      </div>
+
+      <div className="qms-kpi-grid">
         <Kpi label="Total pours" value="—" note="Coming soon" />
         <Kpi label="Pass rate" value="—" note="Coming soon" />
         <Kpi label="Open NCRs" value="—" note="Coming soon" />
@@ -123,24 +138,6 @@ export const ProjectOverview: React.FC = () => {
             <ChecklistItem done={(counts?.labs ?? 0) > 0}>Testing labs registered ({counts?.labs ?? 0})</ChecklistItem>
           </div>
         </Card>
-      </div>
-
-      <div className="qms-section-header">
-        <h2 className="qms-section-title">Quick links</h2>
-      </div>
-      <div className="qms-kpi-grid">
-        {quickLinks.map((q) => (
-          <Card key={q.label} padding="sm" className="qms-kpi-card" onClick={() => navigate(q.to)} style={{ cursor: 'pointer' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="text-muted">{q.icon}</span>
-                <span style={{ fontWeight: 600 }}>{q.label}</span>
-              </div>
-              <ChevronRight size={16} className="text-muted" />
-            </div>
-            {q.count != null && <div className="qms-kpi-value" style={{ fontSize: 22, marginTop: 4 }}>{q.count}</div>}
-          </Card>
-        ))}
       </div>
     </div>
   );

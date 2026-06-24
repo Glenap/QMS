@@ -42,6 +42,7 @@ export const ProjectMixDesigns: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ ...EMPTY });
   const [submitting, setSubmitting] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -81,6 +82,7 @@ export const ProjectMixDesigns: React.FC = () => {
       const md = await mixDesignsApi.create(pid, payload);
       setSuccess(`Mix design for ${md.grade_name} (${md.supplier_name}) added.`);
       setForm({ ...EMPTY });
+      setShowForm(false);
       void load();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to add mix design.'));
@@ -97,13 +99,16 @@ export const ProjectMixDesigns: React.FC = () => {
       {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
       {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
 
-      {canManage && (
+      {canManage && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Add a mix design</h3>
           {suppliers.length === 0 ? (
-            <p className="text-muted" style={{ fontSize: 14 }}>
-              Register a supplier first — mix designs are tied to a supplier and grade.
-            </p>
+            <div>
+              <p className="text-muted" style={{ fontSize: 14, marginTop: 0 }}>
+                Register a supplier first — mix designs are tied to a supplier and grade.
+              </p>
+              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
           ) : (
             <form onSubmit={handleSubmit} className="qms-grid-2">
               <Select
@@ -125,9 +130,12 @@ export const ProjectMixDesigns: React.FC = () => {
                   { label: 'Rejected', value: 'REJECTED' },
                 ]}
               />
-              <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
                 <Button type="submit" variant="primary" disabled={submitting || !canAdd} icon={<Plus size={16} />}>
                   {submitting ? 'Adding…' : 'Add mix design'}
+                </Button>
+                <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+                  Cancel
                 </Button>
               </div>
             </form>
@@ -136,7 +144,14 @@ export const ProjectMixDesigns: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b"><h3 className="qms-section-heading-plain">Mix designs</h3></div>
+        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <h3 className="qms-section-heading-plain">Mix designs</h3>
+          {canManage && !showForm && (
+            <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
+              Add mix design
+            </Button>
+          )}
+        </div>
         <div className="qms-table-container">
           <table className="qms-table">
             <thead><tr><th>Grade</th><th>Supplier</th><th>W/C ratio</th><th>28-day (MPa)</th><th>Approval</th></tr></thead>
