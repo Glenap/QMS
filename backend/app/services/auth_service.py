@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.email import send_invitation_email, send_otp_email
 from app.core.exceptions import (
+    AccountDeactivatedError,
     AlreadyExistsError,
     EmailAlreadyVerifiedError,
     EmailNotVerifiedError,
@@ -18,6 +19,8 @@ from app.core.exceptions import (
     InvalidOtpError,
     InvalidTokenError,
     InvitationAlreadyUsedError,
+    NotFoundError,
+    PermissionDeniedError,
 )
 from app.core.security import (
     create_access_token,
@@ -132,6 +135,11 @@ class AuthService:
 
         if not user or not verify_password(data.password, user.hashed_password):
             raise InvalidCredentialsError()
+
+        # Offboarded by an admin — block before the OTP path so they can't
+        # re-verify their way back in.
+        if user.is_offboarded:
+            raise AccountDeactivatedError()
 
         # Credentials are correct but the account hasn't been activated yet —
         # tell the caller so the UI can route to the OTP screen.
@@ -290,6 +298,10 @@ class AuthService:
         if not user:
             raise InvalidOtpError()
 
+        # A deactivated account can never be reactivated through the OTP flow.
+        if user.is_offboarded:
+            raise AccountDeactivatedError()
+
         # Already-active accounts must authenticate via /auth/login — NEVER issue
         # tokens here without a valid code, or this public endpoint becomes an
         # email-only account-takeover bypass.
@@ -312,9 +324,9 @@ class AuthService:
     async def resend_otp(self, data: ResendOtpRequest) -> OtpChallengeResponse:
         """Issue a fresh OTP for a not-yet-verified account."""
         user = await self.repo.get_user_by_email(data.email)
-        # Only issue for a real, still-inactive user. Always return the same
-        # response so we don't leak which emails exist / are verified.
-        if user and not user.is_active:
+        # Only issue for a real, still-inactive, non-offboarded user. Always
+        # return the same response so we don't leak which emails exist.
+        if user and not user.is_active and not user.is_offboarded:
             await self._issue_otp(user, purpose="RESEND")
         return OtpChallengeResponse(email=data.email)
 
@@ -326,6 +338,40 @@ class AuthService:
             user=UserResponse.model_validate(user),
             organisation=OrgResponse.model_validate(org),
         )
+
+    # ── Profile picture ────────────────────────────────────────────────────────
+
+    async def update_avatar(self, user: User, avatar_url: str | None) -> UserResponse:
+        await self.repo.update_avatar(user.user_id, avatar_url)
+        user.avatar_url = avatar_url
+        return UserResponse.model_validate(user)
+
+    # ── Offboarding (org admin deactivates/reactivates a member) ────────────────
+
+    async def set_member_offboarded(
+        self, actor: User, target_user_id: int, offboarded: bool
+    ) -> UserResponse:
+        """An org admin deactivates (or reactivates) one of their own users.
+
+        Guards: only an org admin may do this; the target must be in the same
+        org; an admin can neither offboard themselves nor another admin.
+        """
+        if not actor.is_org_admin:
+            raise PermissionDeniedError(
+                "Only an organisation admin can deactivate team members"
+            )
+
+        target = await self.repo.get_user_by_id(target_user_id)
+        if not target or target.org_id != actor.org_id:
+            raise NotFoundError("User")
+        if target.user_id == actor.user_id:
+            raise PermissionDeniedError("You cannot deactivate your own account")
+        if target.is_org_admin:
+            raise PermissionDeniedError("You cannot deactivate another admin")
+
+        await self.repo.set_offboarded(target.user_id, offboarded)
+        target.is_offboarded = offboarded
+        return UserResponse.model_validate(target)
 
     # ── Team directory ─────────────────────────────────────────────────────────
 
@@ -340,7 +386,13 @@ class AuthService:
                 email=u.email,
                 full_name=u.full_name,
                 role=u.role,
-                status="ACTIVE" if u.is_active else "UNVERIFIED",
+                status=(
+                    "DEACTIVATED"
+                    if u.is_offboarded
+                    else "ACTIVE"
+                    if u.is_active
+                    else "UNVERIFIED"
+                ),
                 is_org_admin=u.is_org_admin,
                 joined_at=u.created_at,
             )

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Building2, RefreshCw } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -16,6 +16,12 @@ const STATUS_VARIANT: Record<ProjectStatus, 'pass' | 'warn' | 'info'> = {
   COMPLETED: 'info',
 };
 
+const STATUS_LABEL: Record<ProjectStatus, string> = {
+  ACTIVE: 'Active',
+  ON_HOLD: 'On hold',
+  COMPLETED: 'Completed',
+};
+
 const TYPE_LABEL: Record<string, string> = {
   RESIDENTIAL: 'Residential',
   COMMERCIAL: 'Commercial',
@@ -28,6 +34,8 @@ const fmtDate = (iso: string | null): string =>
 
 export const ProjectsList: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const createdName = (location.state as { created?: string } | null)?.created ?? null;
   const { user } = useAuth();
   const canCreate = user?.role === 'CLIENT_ADMIN';
   const [projects, setProjects] = useState<ProjectResponse[]>([]);
@@ -68,6 +76,12 @@ export const ProjectsList: React.FC = () => {
           )}
         </div>
       </div>
+
+      {createdName && (
+        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>
+          Project "{createdName}" created successfully.
+        </div>
+      )}
 
       {error && (
         <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
@@ -117,9 +131,9 @@ export const ProjectsList: React.FC = () => {
                       {p.project_code && <div className="qms-text-sm text-muted">{p.project_code}</div>}
                     </td>
                     <td>{p.project_type ? TYPE_LABEL[p.project_type] ?? p.project_type : '—'}</td>
-                    <td><Badge variant={STATUS_VARIANT[p.status] ?? 'default'}>{p.status}</Badge></td>
+                    <td><Badge variant={STATUS_VARIANT[p.status] ?? 'default'}>{STATUS_LABEL[p.status] ?? p.status}</Badge></td>
                     <td>{[p.city, p.state].filter(Boolean).join(', ') || '—'}</td>
-                    <td>{p.no_of_towers ?? '—'}</td>
+                    <td>{p.assigned_scope ?? (p.no_of_towers ?? '—')}</td>
                     <td>{fmtDate(p.start_date)}</td>
                     <td>{fmtDate(p.created_at)}</td>
                   </tr>

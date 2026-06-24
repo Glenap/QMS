@@ -40,3 +40,20 @@ async def list_suppliers(
 ):
     """List suppliers registered for this project."""
     return await SupplierService(db).list_for_project(project)
+
+
+@router.post(
+    "/{project_id}/suppliers/{supplier_id}/resend-confirmation",
+    response_model=SupplierResponse,
+)
+async def resend_supplier_confirmation(
+    supplier_id: int,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-send the confirmation email to a supplier (contractor side)."""
+    await ensure_can_manage_contractor_side(db, current_user, project)
+    return await SupplierService(db).resend_confirmation(
+        project, supplier_id, current_user
+    )

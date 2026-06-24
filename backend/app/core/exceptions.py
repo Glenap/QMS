@@ -46,6 +46,17 @@ class InactiveUserError(HTTPException):
         )
 
 
+class AccountDeactivatedError(HTTPException):
+    """The account was offboarded by an org admin — distinct from a not-yet-
+    verified account so it can't be reactivated through the OTP flow."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated. Please contact your administrator.",
+        )
+
+
 class PermissionDeniedError(HTTPException):
     def __init__(self, detail: str = "You do not have permission to perform this action"):
         super().__init__(
@@ -139,4 +150,16 @@ class GradeMismatchWarning(HTTPException):
         super().__init__(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Grade mismatch: ordered {ordered}, received {received}",
+        )
+
+
+class TruckStateError(HTTPException):
+    """A truck-dispatch action was attempted from a status that doesn't allow it
+    (e.g. filling a truck that's already been reviewed, or accepting one that
+    hasn't reached the gate yet)."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
         )

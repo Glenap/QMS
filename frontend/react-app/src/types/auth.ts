@@ -23,6 +23,8 @@ export interface UserResponse {
   role: UserRole;
   is_org_admin: boolean;
   is_active: boolean;
+  is_offboarded: boolean;
+  avatar_url: string | null;
   created_at: string;
 }
 

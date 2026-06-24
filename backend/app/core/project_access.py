@@ -117,6 +117,13 @@ async def can_manage_contractor_side(db: AsyncSession, user: User, project: Proj
     return bool(member and member.project_role == ProjectRole.CONTRACTOR_LEAD.value)
 
 
+async def can_manage_project(db: AsyncSession, user: User, project: Project) -> bool:
+    """Manage project setup (towers/floors): either side's managers qualify."""
+    return await can_manage_client_side(db, user, project) or await can_manage_contractor_side(
+        db, user, project
+    )
+
+
 async def is_contractor_admin_for(db: AsyncSession, user: User, project: Project) -> bool:
     if user.role != UserRole.CONTRACTOR_ADMIN:
         return False
@@ -134,6 +141,13 @@ async def ensure_can_manage_contractor_side(db: AsyncSession, user: User, projec
     if not await can_manage_contractor_side(db, user, project):
         raise PermissionDeniedError(
             "Only a contractor admin or an assigned contractor lead can do this"
+        )
+
+
+async def ensure_can_manage_project(db: AsyncSession, user: User, project: Project) -> None:
+    if not await can_manage_project(db, user, project):
+        raise PermissionDeniedError(
+            "You don't have rights to manage this project's setup"
         )
 
 

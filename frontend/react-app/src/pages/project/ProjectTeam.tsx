@@ -4,19 +4,23 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { UserPlus } from 'lucide-react';
+import { UserPlus, UserMinus, UserCheck } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { projectsApi } from '../../api/projects';
+import { authApi } from '../../api/auth';
 import { getApiErrorMessage } from '../../api/client';
 import { projectRoleLabel } from '../../lib/roles';
 import type { ProjectMember, ProjectMemberStatus, ProjectRoleValue } from '../../types/master';
 
-const STATUS_BADGE: Record<ProjectMemberStatus, { variant: 'pass' | 'warn' | 'pending'; label: string }> = {
+const STATUS_BADGE: Record<ProjectMemberStatus, { variant: 'pass' | 'warn' | 'pending' | 'default'; label: string }> = {
   ACTIVE: { variant: 'pass', label: 'Active' },
   UNVERIFIED: { variant: 'warn', label: 'Unverified' },
   INVITED: { variant: 'pending', label: 'Invited' },
+  DEACTIVATED: { variant: 'default', label: 'Deactivated' },
 };
+
+const CONTRACTOR_SIDE_ROLES = ['CONTRACTOR_LEAD', 'PROJECT_MANAGER', 'QUALITY_ENGINEER', 'SUPERVISOR'];
 
 export const ProjectTeam: React.FC = () => {
   const { project } = useProject();
@@ -42,8 +46,38 @@ export const ProjectTeam: React.FC = () => {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ProjectRoleValue | ''>(assignable[0] ?? '');
   const [submitting, setSubmitting] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Org admins can offboard members of their own org/side. Mirrors the backend
+  // (POST /auth/users/{id}/deactivate requires is_org_admin + same org).
+  const isOrgAdmin = user?.role === 'CLIENT_ADMIN' || project.access.is_contractor_admin;
+  const canManageMember = (m: ProjectMember): boolean => {
+    if (m.user_id == null || m.user_id === user?.user_id) return false;
+    if (user?.role === 'CLIENT_ADMIN') return m.project_role === 'CLIENT_LEAD';
+    if (project.access.is_contractor_admin) return CONTRACTOR_SIDE_ROLES.includes(m.project_role);
+    return false;
+  };
+
+  const toggleMember = async (m: ProjectMember) => {
+    if (m.user_id == null) return;
+    const deactivate = m.status !== 'DEACTIVATED';
+    if (deactivate && !window.confirm(`Deactivate ${m.full_name ?? m.email}? They'll immediately lose access until reactivated.`)) {
+      return;
+    }
+    setError(null); setSuccess(null); setTogglingId(m.user_id);
+    try {
+      if (deactivate) await authApi.deactivateUser(m.user_id);
+      else await authApi.reactivateUser(m.user_id);
+      setSuccess(`${m.email} ${deactivate ? 'deactivated' : 'reactivated'}.`);
+      void load();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to update member.'));
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -112,13 +146,13 @@ export const ProjectTeam: React.FC = () => {
         <div className="qms-table-container">
           <table className="qms-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th>{isOrgAdmin && <th></th>}</tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={4} className="text-muted">Loading…</td></tr>
+                <tr><td colSpan={isOrgAdmin ? 5 : 4} className="text-muted">Loading…</td></tr>
               ) : members.length === 0 ? (
-                <tr><td colSpan={4} className="text-muted">No team members yet.</td></tr>
+                <tr><td colSpan={isOrgAdmin ? 5 : 4} className="text-muted">No team members yet.</td></tr>
               ) : (
                 members.map((m) => (
                   <tr key={m.email}>
@@ -126,6 +160,21 @@ export const ProjectTeam: React.FC = () => {
                     <td>{m.email}</td>
                     <td>{projectRoleLabel(m.project_role)}</td>
                     <td><Badge variant={STATUS_BADGE[m.status].variant}>{STATUS_BADGE[m.status].label}</Badge></td>
+                    {isOrgAdmin && (
+                      <td>
+                        {canManageMember(m) && (
+                          m.status === 'DEACTIVATED' ? (
+                            <Button variant="ghost" size="sm" icon={<UserCheck size={14} />} disabled={togglingId === m.user_id} onClick={() => toggleMember(m)}>
+                              {togglingId === m.user_id ? 'Saving…' : 'Reactivate'}
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="sm" icon={<UserMinus size={14} />} disabled={togglingId === m.user_id} onClick={() => toggleMember(m)}>
+                              {togglingId === m.user_id ? 'Saving…' : 'Deactivate'}
+                            </Button>
+                          )
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

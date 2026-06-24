@@ -24,6 +24,7 @@ from app.schemas.master import (
     ProjectMemberCreate,
     ProjectMemberResponse,
     ProjectResponse,
+    TowerResponse,
 )
 from app.services.contractor_service import ContractorService
 from app.services.membership_service import MembershipService
@@ -89,6 +90,15 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
 ):
     return await ProjectService(db).get_detail(project, current_user)
+
+
+@router.get("/{project_id}/towers", response_model=list[TowerResponse])
+async def list_towers(
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Towers belonging to this project (drives pour-card + floor dropdowns)."""
+    return await ProjectService(db).list_towers(project)
 
 
 @router.get("/{project_id}/members", response_model=list[ProjectMemberResponse])

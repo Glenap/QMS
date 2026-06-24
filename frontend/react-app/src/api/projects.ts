@@ -11,6 +11,7 @@ import type {
   ProjectMember,
   ProjectMemberCreate,
   ProjectResponse,
+  TowerResponse,
 } from '../types/master';
 
 export const projectsApi = {
@@ -26,6 +27,10 @@ export const projectsApi = {
 
   detail(id: number): Promise<ProjectDetail> {
     return api.get<ProjectDetail>(`/projects/${id}`).then((r) => r.data);
+  },
+
+  towers(id: number): Promise<TowerResponse[]> {
+    return api.get<TowerResponse[]>(`/projects/${id}/towers`).then((r) => r.data);
   },
 
   // ── Members ──────────────────────────────────────────────────────────────

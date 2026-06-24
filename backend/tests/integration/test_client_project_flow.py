@@ -98,6 +98,103 @@ class TestRegisterContractor:
         assert inv.role == UserRole.CONTRACTOR_ADMIN
         assert inv.status == InvitationStatus.PENDING
 
+    async def test_contractor_scope_from_selected_towers(self, client):
+        """Selected towers are stored as a readable scope label."""
+        token, _ = await register_and_token(client)
+        proj = await client.post(
+            f"{API}/projects", json=sample_project_payload(), headers=bearer(token)
+        )
+        project_id = proj.json()["project_id"]
+
+        towers = (
+            await client.get(
+                f"{API}/projects/{project_id}/towers", headers=bearer(token)
+            )
+        ).json()
+        names = sorted(t["tower_name"] for t in towers)
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/contractors",
+            json={
+                "org_name": "Tower-Scoped Co",
+                "contact_email": "towerco@example.com",
+                "tower_ids": [t["tower_id"] for t in towers],
+            },
+            headers=bearer(token),
+        )
+        assert resp.status_code == 201, resp.text
+        # Scope joins the selected tower names (ordered by tower_id).
+        assert sorted(resp.json()["scope"].split(", ")) == names
+
+    async def test_contractor_scope_defaults_to_entire_project(self, client):
+        token, _ = await register_and_token(client)
+        proj = await client.post(
+            f"{API}/projects", json=sample_project_payload(), headers=bearer(token)
+        )
+        project_id = proj.json()["project_id"]
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/contractors",
+            json={"org_name": "Whole Project Co", "contact_email": "whole@example.com"},
+            headers=bearer(token),
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["scope"] == "Entire project"
+
+    async def test_contractor_rejects_tower_outside_project(self, client):
+        token, _ = await register_and_token(client)
+        proj = await client.post(
+            f"{API}/projects", json=sample_project_payload(), headers=bearer(token)
+        )
+        project_id = proj.json()["project_id"]
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/contractors",
+            json={
+                "org_name": "Bad Tower Co",
+                "contact_email": "badtower@example.com",
+                "tower_ids": [999999],
+            },
+            headers=bearer(token),
+        )
+        assert resp.status_code == 404, resp.text
+
+    async def test_tower_cannot_be_assigned_to_two_contractors(self, client):
+        """A tower allotted to one contractor is rejected for the next."""
+        token, _ = await register_and_token(client)
+        proj = await client.post(
+            f"{API}/projects", json=sample_project_payload(), headers=bearer(token)
+        )
+        project_id = proj.json()["project_id"]
+        towers = (
+            await client.get(
+                f"{API}/projects/{project_id}/towers", headers=bearer(token)
+            )
+        ).json()
+        first = towers[0]["tower_id"]
+
+        r1 = await client.post(
+            f"{API}/projects/{project_id}/contractors",
+            json={
+                "org_name": "Alpha Co",
+                "contact_email": "alpha@example.com",
+                "tower_ids": [first],
+            },
+            headers=bearer(token),
+        )
+        assert r1.status_code == 201, r1.text
+
+        r2 = await client.post(
+            f"{API}/projects/{project_id}/contractors",
+            json={
+                "org_name": "Beta Co",
+                "contact_email": "beta@example.com",
+                "tower_ids": [first],
+            },
+            headers=bearer(token),
+        )
+        assert r2.status_code == 403, r2.text
+
     async def test_add_contractor_requires_auth(self, client):
         resp = await client.post(
             f"{API}/projects/1/contractors",

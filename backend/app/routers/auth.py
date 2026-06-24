@@ -14,6 +14,7 @@ from app.models.auth import User, UserRole
 from app.schemas.auth import (
     AcceptInvitationRequest,
     AccessTokenResponse,
+    AvatarUpdate,
     InvitationResponse,
     InviteRequest,
     LoginRequest,
@@ -24,6 +25,7 @@ from app.schemas.auth import (
     ResendOtpRequest,
     TeamMemberResponse,
     TokenResponse,
+    UserResponse,
     VerifyOtpRequest,
 )
 from app.services.auth_service import AuthService
@@ -142,6 +144,36 @@ async def get_team(
     """Org directory: active/unverified users + pending invitations."""
     service = AuthService(db)
     return await service.get_team(current_user)
+
+
+@router.put("/me/avatar", response_model=UserResponse)
+async def update_my_avatar(
+    data: AvatarUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or clear the current user's profile picture (data: URL)."""
+    return await AuthService(db).update_avatar(current_user, data.avatar_url)
+
+
+@router.post("/users/{user_id}/deactivate", response_model=UserResponse)
+async def deactivate_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Org admin offboards a member of their org — revokes all access."""
+    return await AuthService(db).set_member_offboarded(current_user, user_id, True)
+
+
+@router.post("/users/{user_id}/reactivate", response_model=UserResponse)
+async def reactivate_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Org admin restores a previously deactivated member."""
+    return await AuthService(db).set_member_offboarded(current_user, user_id, False)
 
 
 # ---------------------------------------------------------------------------

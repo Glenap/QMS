@@ -854,9 +854,20 @@
   max-width: 400px;
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-  padding: 40px;
+  padding: 32px 40px;
   position: relative;
   animation: slideUp 0.3s ease-out;
+  /* Cap to the viewport and scroll internally so tall forms (signup) never
+     push the confirm-password field and submit button off-screen. The scroll
+     works but the scrollbar stays hidden. */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge/IE */
+}
+
+.lp-modal::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
 }
 
 @keyframes slideUp {
@@ -894,7 +905,7 @@
 
 .lp-modal-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
 .lp-modal-title {
@@ -910,7 +921,7 @@
 }
 
 .lp-form-group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .lp-form-label {

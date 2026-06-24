@@ -333,6 +333,21 @@ class Supplier(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Confirmation handshake (passwordless, token-based) ──
+    # PENDING → CONFIRMED / DECLINED. The supplier never gets a portal account;
+    # they confirm their details via a tokenised email link.
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="PENDING"
+    )
+    confirmation_token: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
+    confirmation_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ── Phase 1 extension: fields from the RMC Supplier Registration form ──
     plant_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -437,6 +452,21 @@ class TestingLab(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Confirmation handshake (passwordless, token-based) ──
+    # PENDING → CONFIRMED / DECLINED. The lab never gets a portal account; they
+    # confirm their details (and complete their profile) via a tokenised link.
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="PENDING"
+    )
+    confirmation_token: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
+    confirmation_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ── Phase 1 extension: fields from the External Lab Registration form ──
     registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)

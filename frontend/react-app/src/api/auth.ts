@@ -10,6 +10,7 @@ import type {
   VerifyOtpRequest,
   TokenResponse,
   MeResponse,
+  UserResponse,
 } from '../types/auth';
 
 export const authApi = {
@@ -37,6 +38,20 @@ export const authApi = {
 
   me(): Promise<MeResponse> {
     return api.get<MeResponse>('/auth/me').then((r) => r.data);
+  },
+
+  // Set (data: URL) or clear (null) the current user's profile picture.
+  updateAvatar(avatarUrl: string | null): Promise<UserResponse> {
+    return api.put<UserResponse>('/auth/me/avatar', { avatar_url: avatarUrl }).then((r) => r.data);
+  },
+
+  // Org admin only — offboard / restore a member of their org.
+  deactivateUser(userId: number): Promise<UserResponse> {
+    return api.post<UserResponse>(`/auth/users/${userId}/deactivate`).then((r) => r.data);
+  },
+
+  reactivateUser(userId: number): Promise<UserResponse> {
+    return api.post<UserResponse>(`/auth/users/${userId}/reactivate`).then((r) => r.data);
   },
 
   logout(): Promise<void> {

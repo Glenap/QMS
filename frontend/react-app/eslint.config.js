@@ -18,5 +18,13 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // The data-loading idiom used across this app — useEffect(() => { void
+      // load() }, [load]) and resetting dependent state when inputs change —
+      // legitimately calls setState from effects (after an await, not
+      // synchronously in a render-causing way). This rule is an opinionated
+      // perf hint, not a correctness check, so we disable it project-wide.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

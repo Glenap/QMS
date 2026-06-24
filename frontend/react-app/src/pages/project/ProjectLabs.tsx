@@ -4,13 +4,20 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { Plus } from 'lucide-react';
+import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { labsApi } from '../../api/labs';
 import { getApiErrorMessage } from '../../api/client';
-import type { LabCreate, LabResponse, LabType } from '../../types/master';
+import type { ConfirmationStatus, LabCreate, LabResponse, LabType } from '../../types/master';
 
 const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
+
+const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
+  CONFIRMED: 'pass', PENDING: 'warn', DECLINED: 'fail',
+};
+const CONF_LABEL: Record<ConfirmationStatus, string> = {
+  CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
+};
 
 const EMPTY = { lab_name: '', lab_type: 'THIRD_PARTY' as LabType, accreditation_no: '', city: '', state: '', contact_email: '', contact_phone: '' };
 
@@ -23,6 +30,7 @@ export const ProjectLabs: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ ...EMPTY });
   const [submitting, setSubmitting] = useState(false);
+  const [resendingId, setResendingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -56,13 +64,30 @@ export const ProjectLabs: React.FC = () => {
     };
     try {
       const l = await labsApi.create(pid, payload);
-      setSuccess(`Lab "${l.lab_name}" registered.`);
+      setSuccess(
+        l.contact_email
+          ? `Lab "${l.lab_name}" registered — a confirmation email was sent to ${l.contact_email}.`
+          : `Lab "${l.lab_name}" registered. Add a contact email to send a confirmation request.`,
+      );
       setForm({ ...EMPTY });
       void load();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to register lab.'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResend = async (l: LabResponse) => {
+    setError(null); setSuccess(null); setResendingId(l.lab_id);
+    try {
+      await labsApi.resendConfirmation(pid, l.lab_id);
+      setSuccess(`Confirmation re-sent to ${l.contact_email}.`);
+      void load();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to resend confirmation.'));
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -100,20 +125,39 @@ export const ProjectLabs: React.FC = () => {
         <div className="qms-p-4 qms-border-b"><h3 className="qms-section-heading-plain">Testing labs</h3></div>
         <div className="qms-table-container">
           <table className="qms-table">
-            <thead><tr><th>Lab</th><th>Type</th><th>Location</th><th>Contact</th><th>Status</th></tr></thead>
+            <thead><tr><th>Lab</th><th>Hired by</th><th>Type</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="text-muted">Loading…</td></tr>
+                <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="text-muted">No labs yet.</td></tr>
+                <tr><td colSpan={6} className="text-muted">No labs yet.</td></tr>
               ) : (
                 rows.map((l) => (
                   <tr key={l.lab_id}>
                     <td className="font-medium">{l.lab_name}</td>
+                    <td>{l.contractor_org_name ?? '—'}</td>
                     <td>{l.lab_type === 'THIRD_PARTY' ? 'Third party' : 'In-house'}</td>
                     <td>{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
                     <td>{l.contact_email ?? l.contact_phone ?? '—'}</td>
-                    <td><Badge variant={l.is_active ? 'pass' : 'pending'}>{l.is_active ? 'Active' : 'Inactive'}</Badge></td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
+                        {l.status === 'CONFIRMED' && l.confirmed_at && (
+                          <span className="qms-text-sm text-muted">{new Date(l.confirmed_at).toLocaleDateString()}</span>
+                        )}
+                        {canManage && l.status !== 'CONFIRMED' && l.contact_email && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<Mail size={13} />}
+                            disabled={resendingId === l.lab_id}
+                            onClick={() => handleResend(l)}
+                          >
+                            {resendingId === l.lab_id ? 'Sending…' : 'Resend'}
+                          </Button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

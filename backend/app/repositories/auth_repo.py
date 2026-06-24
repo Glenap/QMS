@@ -105,6 +105,18 @@ class AuthRepository:
             update(User).where(User.user_id == user_id).values(is_active=True)
         )
 
+    async def set_offboarded(self, user_id: int, offboarded: bool) -> None:
+        await self.session.execute(
+            update(User)
+            .where(User.user_id == user_id)
+            .values(is_offboarded=offboarded)
+        )
+
+    async def update_avatar(self, user_id: int, avatar_url: str | None) -> None:
+        await self.session.execute(
+            update(User).where(User.user_id == user_id).values(avatar_url=avatar_url)
+        )
+
     async def email_exists(self, email: str) -> bool:
         result = await self.session.execute(
             select(User.user_id).where(User.email == email)

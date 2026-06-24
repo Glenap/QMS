@@ -65,9 +65,33 @@ class UserResponse(BaseModel):
     role: UserRole
     is_org_admin: bool
     is_active: bool
+    is_offboarded: bool = False
+    avatar_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AvatarUpdate(BaseModel):
+    """Set or clear the current user's profile picture.
+
+    avatar_url is a small `data:image/...;base64,` URL (the frontend resizes the
+    image to a thumbnail before upload). null clears the picture.
+    """
+
+    avatar_url: str | None = None
+
+    @field_validator("avatar_url")
+    @classmethod
+    def validate_avatar(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        if not v.startswith("data:image/"):
+            raise ValueError("avatar_url must be a data:image/… URL")
+        # ~1.5 MB cap on the encoded string keeps the users row small.
+        if len(v) > 1_500_000:
+            raise ValueError("Image is too large — please use a smaller picture")
+        return v
 
 
 # ---------------------------------------------------------------------------

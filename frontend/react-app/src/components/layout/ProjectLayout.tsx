@@ -18,12 +18,20 @@ export interface ProjectCtx {
 }
 
 // Tab pages call this to read the loaded project + a reload callback.
+// (Co-located with the layout on purpose; HMR fast-refresh isn't a concern here.)
+// eslint-disable-next-line react-refresh/only-export-components
 export const useProject = () => useOutletContext<ProjectCtx>();
 
 const STATUS_VARIANT: Record<string, 'pass' | 'warn' | 'info'> = {
   ACTIVE: 'pass',
   ON_HOLD: 'warn',
   COMPLETED: 'info',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: 'Active',
+  ON_HOLD: 'On hold',
+  COMPLETED: 'Completed',
 };
 
 export const ProjectLayout: React.FC = () => {
@@ -78,7 +86,9 @@ export const ProjectLayout: React.FC = () => {
               {[project.city, project.state].filter(Boolean).join(', ') || 'No location set'}
             </div>
           </div>
-          <Badge variant={STATUS_VARIANT[project.status] ?? 'default'}>{project.status}</Badge>
+          <Badge variant={STATUS_VARIANT[project.status] ?? 'default'}>
+            {STATUS_LABEL[project.status] ?? project.status}
+          </Badge>
         </div>
 
         <Outlet context={{ project, reload: load } satisfies ProjectCtx} />

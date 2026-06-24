@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -109,6 +109,7 @@ const num = (v: string): number | undefined => {
 
 export const ProjectMasterForm: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [form, setForm] = useState<ProjectFormState>(INITIAL);
   const [towers, setTowers] = useState<TowerRowState[]>([newTowerRow()]);
   const [submitting, setSubmitting] = useState(false);
@@ -132,7 +133,23 @@ export const ProjectMasterForm: React.FC = () => {
         prev.map((t) => (t._id === id ? { ...t, [field]: e.target.value } : t))
       );
 
-  const addTower = () => setTowers((prev) => [...prev, newTowerRow()]);
+  // Project-level caps from section C, applied live to the tower rows below.
+  const maxFloors = num(form.max_floors);
+  const maxBasements = num(form.no_of_basements);
+  const maxTowers = num(form.no_of_towers);
+  const towerLimitReached = maxTowers != null && towers.length >= maxTowers;
+
+  const towerFloorsError = (t: TowerRowState): string | undefined => {
+    const f = num(t.floors_total);
+    return maxFloors != null && f != null && f > maxFloors ? `Max ${maxFloors}` : undefined;
+  };
+  const towerBasementsError = (t: TowerRowState): string | undefined => {
+    const b = num(t.no_of_basements);
+    return maxBasements != null && b != null && b > maxBasements ? `Max ${maxBasements}` : undefined;
+  };
+
+  const addTower = () =>
+    setTowers((prev) => (towerLimitReached ? prev : [...prev, newTowerRow()]));
   const removeTower = (id: string) =>
     setTowers((prev) => (prev.length === 1 ? prev : prev.filter((t) => t._id !== id)));
 
@@ -140,6 +157,33 @@ export const ProjectMasterForm: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    // Cross-field validation: tower rows must stay within the project-level
+    // caps entered above (max floors, basements, tower count).
+    const namedTowers = towers.filter((t) => t.tower_name.trim() !== '');
+    const problems: string[] = [];
+
+    if (maxTowers != null && namedTowers.length > maxTowers) {
+      problems.push(`You've added ${namedTowers.length} towers but "No. of Towers" is set to ${maxTowers}.`);
+    }
+    namedTowers.forEach((t) => {
+      const label = t.tower_name.trim();
+      const floors = num(t.floors_total);
+      if (maxFloors != null && floors != null && floors > maxFloors) {
+        problems.push(`Tower "${label}" has ${floors} floors, above the project max of ${maxFloors}.`);
+      }
+      const basements = num(t.no_of_basements);
+      if (maxBasements != null && basements != null && basements > maxBasements) {
+        problems.push(`Tower "${label}" has ${basements} basements, above the project max of ${maxBasements}.`);
+      }
+    });
+
+    if (problems.length > 0) {
+      setError(problems.join(' '));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     setSubmitting(true);
 
     const towersPayload: TowerCreate[] = towers
@@ -186,13 +230,11 @@ export const ProjectMasterForm: React.FC = () => {
 
     try {
       const created = await projectsApi.create(payload);
-      setSuccess(`Project "${created.project_name}" created successfully.`);
-      setForm(INITIAL);
-      setTowers([newTowerRow()]);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Created — hand off to the projects list, which shows the new project
+      // (and a success banner) rather than leaving a blanked form behind.
+      navigate('/app/projects', { state: { created: created.project_name } });
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to create project. Please try again.'));
-    } finally {
       setSubmitting(false);
     }
   };
@@ -287,7 +329,7 @@ export const ProjectMasterForm: React.FC = () => {
           <Input label="Total Built-up Area (sqft)" type="number" value={form.builtup_area_sqft} onChange={update('builtup_area_sqft')} />
           <Input label="No. of Towers" type="number" value={form.no_of_towers} onChange={update('no_of_towers')} />
 
-          <Input label="No. of Basements" type="number" value={form.no_of_basements} onChange={update('no_of_basements')} />
+          <Input label="No. of Basements (Max)" type="number" value={form.no_of_basements} onChange={update('no_of_basements')} />
           <Input label="No. of Floors (Max)" type="number" value={form.max_floors} onChange={update('max_floors')} />
 
           <Select label="Project Status" required value={form.status} onChange={update('status')} options={[
@@ -331,8 +373,8 @@ export const ProjectMasterForm: React.FC = () => {
                     { label: 'Residential', value: 'Residential' },
                     { label: 'Commercial', value: 'Commercial' },
                   ]} /></td>
-                  <td><Input type="number" value={t.floors_total} onChange={updateTower(t._id, 'floors_total')} /></td>
-                  <td><Input type="number" value={t.no_of_basements} onChange={updateTower(t._id, 'no_of_basements')} /></td>
+                  <td><Input type="number" min={0} max={maxFloors} value={t.floors_total} onChange={updateTower(t._id, 'floors_total')} error={towerFloorsError(t)} /></td>
+                  <td><Input type="number" min={0} max={maxBasements} value={t.no_of_basements} onChange={updateTower(t._id, 'no_of_basements')} error={towerBasementsError(t)} /></td>
                   <td><Input type="number" value={t.floor_height_m} onChange={updateTower(t._id, 'floor_height_m')} /></td>
                   <td><Input value={t.start_label} onChange={updateTower(t._id, 'start_label')} /></td>
                   <td><Input type="date" value={t.construction_start_date} onChange={updateTower(t._id, 'construction_start_date')} /></td>
@@ -342,8 +384,11 @@ export const ProjectMasterForm: React.FC = () => {
             </tbody>
           </table>
         </div>
-        <div className="qms-p-4">
-          <Button type="button" variant="outline" className="qms-dashed-btn" icon={<Plus size={16} />} onClick={addTower}>Add Tower</Button>
+        <div className="qms-p-4" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Button type="button" variant="outline" className="qms-dashed-btn" icon={<Plus size={16} />} onClick={addTower} disabled={towerLimitReached}>Add Tower</Button>
+          {towerLimitReached && (
+            <span className="qms-text-sm text-muted">Limit of {maxTowers} tower{maxTowers === 1 ? '' : 's'} reached (set in Timeline &amp; Scope).</span>
+          )}
         </div>
       </Card>
 

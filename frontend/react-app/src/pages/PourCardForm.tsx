@@ -1,216 +1,198 @@
-import React, { useState } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+// Raise a pour card — captures the pour identification, grade, supplier and
+// planned volume, then creates a PLANNED pour (QUALITY_ENGINEER only).
+//
+// Pre-pour checklist, per-truck logging and cube sampling arrive in later
+// phases (dispatch + cube tests) once those models are wired.
+
+import React, { useEffect, useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
-import { Check, X, Plus, QrCode } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useProject } from '../components/layout/ProjectLayout';
+import { projectsApi } from '../api/projects';
+import { catalogApi } from '../api/catalog';
+import { suppliersApi } from '../api/suppliers';
+import { floorsApi } from '../api/floors';
+import { poursApi } from '../api/pours';
+import { getApiErrorMessage } from '../api/client';
+import type {
+  ComponentResponse,
+  FloorResponse,
+  GradeResponse,
+  PourCreate,
+  SupplierResponse,
+  TowerResponse,
+} from '../types/master';
 import './PourCardForm.css';
+
+const COMPONENT_LABEL: Record<string, string> = {
+  COLUMN: 'Column', SLAB: 'Slab', BEAM: 'Beam', RAFT: 'Raft',
+  SHEAR_WALL: 'Shear wall', STAIRCASE: 'Staircase', LIFT_CORE: 'Lift core', FOUNDATION: 'Foundation',
+};
+
+const num = (v: string): number | undefined => {
+  const t = v.trim();
+  if (t === '') return undefined;
+  const n = Number(t);
+  return Number.isNaN(n) ? undefined : n;
+};
 
 export const PourCardForm: React.FC = () => {
   const { user } = useAuth();
-  const { projectId } = useParams();
-  const [activeSegment, setActiveSegment] = useState<Record<string, string>>({
-    shuttering: 'yes',
-    reinforcement: 'yes',
-    coverBlock: 'yes',
-    cleaning: 'yes',
-    approval: 'approved'
-  });
+  const { project } = useProject();
+  const navigate = useNavigate();
+  const pid = project.project_id;
 
-  const handleSegment = (key: string, val: string) => {
-    setActiveSegment(prev => ({ ...prev, [key]: val }));
-  };
+  const [towers, setTowers] = useState<TowerResponse[]>([]);
+  const [components, setComponents] = useState<ComponentResponse[]>([]);
+  const [grades, setGrades] = useState<GradeResponse[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
+  const [floors, setFloors] = useState<FloorResponse[]>([]);
+
+  const [towerId, setTowerId] = useState('');
+  const [floorId, setFloorId] = useState('');
+  const [componentId, setComponentId] = useState('');
+  const [gradeId, setGradeId] = useState('');
+  const [supplierId, setSupplierId] = useState('');
+  const [subContractor, setSubContractor] = useState('');
+  const [pourDate, setPourDate] = useState('');
+  const [pourReference, setPourReference] = useState('');
+  const [volume, setVolume] = useState('');
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [tw, comp, gr, sup] = await Promise.all([
+          projectsApi.towers(pid),
+          catalogApi.components(),
+          catalogApi.grades(),
+          suppliersApi.list(pid),
+        ]);
+        if (cancelled) return;
+        setTowers(tw); setComponents(comp); setGrades(gr); setSuppliers(sup);
+      } catch (err) {
+        if (!cancelled) setError(getApiErrorMessage(err, 'Unable to load reference data.'));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pid]);
+
+  useEffect(() => {
+    if (!towerId) { setFloors([]); setFloorId(''); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const fl = await floorsApi.list(pid, Number(towerId));
+        if (!cancelled) setFloors(fl);
+      } catch {
+        if (!cancelled) setFloors([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pid, towerId]);
 
   // Pour cards are raised by the Quality Engineer only.
   if (user && user.role !== 'QUALITY_ENGINEER') {
-    return <Navigate to={`/app/projects/${projectId}`} replace />;
+    return <Navigate to={`/app/projects/${pid}`} replace />;
   }
 
+  const canSubmit =
+    towerId !== '' && floorId !== '' && componentId !== '' &&
+    gradeId !== '' && supplierId !== '' && pourDate !== '';
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    const payload: PourCreate = {
+      tower_id: Number(towerId),
+      floor_id: Number(floorId),
+      component_id: Number(componentId),
+      grade_id: Number(gradeId),
+      supplier_horizontal_id: Number(supplierId),
+      pour_date: pourDate,
+      pour_reference: pourReference.trim() || null,
+      volume_cum: num(volume) ?? null,
+      sub_contractor_name: subContractor.trim() || null,
+    };
+    try {
+      await poursApi.create(pid, payload);
+      navigate(`/app/projects/${pid}/pours`);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to create pour.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <div className="qms-pour-form">
-      <div className="qms-pour-header">
-        <div className="qms-pour-id-bar">
-          <span className="text-muted">Pour ID: PC-T1-5F-SLB-20240601-001</span>
-          <Badge variant="warn">In progress</Badge>
-          <span className="text-muted qms-ml-auto">Last saved 2 min ago</span>
+    <form className="qms-pour-form" onSubmit={handleSubmit}>
+      {error && (
+        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
+          {error}
         </div>
-      </div>
+      )}
 
       <Card className="qms-form-section">
         <h3 className="qms-section-heading">A · Pour identification</h3>
         <div className="qms-grid-3">
-          <Select label="Tower" required options={[
-            { label: 'T1 — Tower Emerald', value: 'T1' },
-            { label: 'T2', value: 'T2' }
+          <Select label="Tower" required value={towerId} onChange={(e) => setTowerId(e.target.value)} options={[
+            { label: towers.length ? 'Select tower…' : 'No towers yet', value: '' },
+            ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id })),
           ]} />
-          <Select label="Floor" required options={[
-            { label: '5F', value: '5F' },
-            { label: '6F', value: '6F' }
+          <Select label="Floor" required value={floorId} onChange={(e) => setFloorId(e.target.value)} options={[
+            { label: !towerId ? 'Pick a tower first' : floors.length ? 'Select floor…' : 'No floors — add them in Setup', value: '' },
+            ...floors.map((f) => ({ label: f.floor_label, value: f.floor_id })),
           ]} />
-          <Select label="Zone" options={[
-            { label: 'North Core', value: 'North Core' },
-            { label: 'South', value: 'South' }
+          <Select label="Component type" required value={componentId} onChange={(e) => setComponentId(e.target.value)} options={[
+            { label: 'Select component…', value: '' },
+            ...components.map((c) => ({ label: COMPONENT_LABEL[c.component_type] ?? c.component_type, value: c.component_id })),
           ]} />
-        </div>
-        <div className="qms-grid-2">
-          <Select label="Component type" required options={[
-            { label: 'Slab', value: 'Slab' },
-            { label: 'Column', value: 'Column' },
-            { label: 'Beam', value: 'Beam' }
-          ]} />
-          <Input label="Component ID" required value="T1-5F-SLB-01" readOnly disabled />
         </div>
       </Card>
 
       <Card className="qms-form-section">
-        <h3 className="qms-section-heading">C · Pre-pour checklist</h3>
-        
-        <div className="qms-checklist">
-          <div className="qms-check-item">
-            <span>Shuttering inspection</span>
-            <div className="qms-seg-group">
-              <button className={`qms-seg-btn ${activeSegment.shuttering === 'yes' ? 'qms-seg-btn--pass' : ''}`} onClick={() => handleSegment('shuttering', 'yes')}>Yes</button>
-              <button className={`qms-seg-btn ${activeSegment.shuttering === 'no' ? 'qms-seg-btn--fail' : ''}`} onClick={() => handleSegment('shuttering', 'no')}>No</button>
-              <button className={`qms-seg-btn ${activeSegment.shuttering === 'na' ? 'qms-seg-btn--na' : ''}`} onClick={() => handleSegment('shuttering', 'na')}>NA</button>
-            </div>
-          </div>
-          <div className="qms-check-item">
-            <span>Reinforcement inspection</span>
-            <div className="qms-seg-group">
-              <button className={`qms-seg-btn ${activeSegment.reinforcement === 'yes' ? 'qms-seg-btn--pass' : ''}`} onClick={() => handleSegment('reinforcement', 'yes')}>Yes</button>
-              <button className={`qms-seg-btn ${activeSegment.reinforcement === 'no' ? 'qms-seg-btn--fail' : ''}`} onClick={() => handleSegment('reinforcement', 'no')}>No</button>
-            </div>
-          </div>
-          <div className="qms-check-item">
-            <span>Cover block check</span>
-            <div className="qms-seg-group">
-              <button className={`qms-seg-btn ${activeSegment.coverBlock === 'yes' ? 'qms-seg-btn--pass' : ''}`} onClick={() => handleSegment('coverBlock', 'yes')}>Yes</button>
-              <button className={`qms-seg-btn ${activeSegment.coverBlock === 'no' ? 'qms-seg-btn--fail' : ''}`} onClick={() => handleSegment('coverBlock', 'no')}>No</button>
-            </div>
-          </div>
-          <div className="qms-check-item">
-            <span>Cleaning of formwork</span>
-            <div className="qms-seg-group">
-              <button className={`qms-seg-btn ${activeSegment.cleaning === 'yes' ? 'qms-seg-btn--pass' : ''}`} onClick={() => handleSegment('cleaning', 'yes')}>Yes</button>
-              <button className={`qms-seg-btn ${activeSegment.cleaning === 'no' ? 'qms-seg-btn--fail' : ''}`} onClick={() => handleSegment('cleaning', 'no')}>No</button>
-            </div>
-          </div>
-          <div className="qms-check-item qms-mt-4">
-            <span className="font-medium">Pre-pour approval</span>
-            <div className="qms-seg-group qms-seg-group--large">
-              <button className={`qms-seg-btn ${activeSegment.approval === 'approved' ? 'qms-seg-btn--pass' : ''}`} onClick={() => handleSegment('approval', 'approved')}><Check size={14}/> Approved</button>
-              <button className={`qms-seg-btn ${activeSegment.approval === 'rejected' ? 'qms-seg-btn--fail' : ''}`} onClick={() => handleSegment('approval', 'rejected')}><X size={14}/> Not approved</button>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="qms-form-section">
-        <h3 className="qms-section-heading">E · Per-truck record</h3>
-        
-        <div className="qms-truck-card">
-          <div className="qms-truck-head">
-            <span className="font-medium text-gray-900">Truck 1 — KA-05-AB-1234</span>
-            <Badge variant="pass">Transit: 35 min ✓</Badge>
-          </div>
-          <div className="qms-truck-grid">
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Batch ID</div>
-              <div className="qms-truck-val">BATCH-20240601-042</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Load volume</div>
-              <div className="qms-truck-val">7.0 m³</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Water added</div>
-              <div className="qms-truck-val text-success">None ✓</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Slump</div>
-              <div className="qms-truck-val">125 mm</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Slump result</div>
-              <div className="qms-truck-val text-success">Pass</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Cumulative</div>
-              <div className="qms-truck-val">7.0 m³</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="qms-truck-card qms-truck-card--danger">
-          <div className="qms-truck-head">
-            <span className="font-medium text-gray-900">Truck 7 — KA-05-AB-1240</span>
-            <Badge variant="fail">Transit: 98 min ⚠</Badge>
-          </div>
-          <div className="qms-truck-grid">
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Batch ID</div>
-              <div className="qms-truck-val">BATCH-20240601-049</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Load volume</div>
-              <div className="qms-truck-val">7.0 m³</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Water added</div>
-              <div className="qms-truck-val text-danger">Yes — 12 L ⚠</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Slump</div>
-              <div className="qms-truck-val">148 mm</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Slump result</div>
-              <div className="qms-truck-val text-warning">At limit</div>
-            </div>
-            <div className="qms-truck-field">
-              <div className="qms-truck-label">Cumulative</div>
-              <div className="qms-truck-val">49.0 m³</div>
-            </div>
-          </div>
-        </div>
-
-        <Button variant="outline" fullWidth className="qms-dashed-btn" icon={<Plus size={16}/>}>
-          Add truck
-        </Button>
-      </Card>
-
-      <Card className="qms-form-section">
-        <h3 className="qms-section-heading">G · Cube sampling</h3>
-        <div className="qms-grid-2">
-          <Input label="Cube set ID" required value="CUBE-T1-5F-20240601-001" />
-          <Input label="Sampling time" required type="time" value="07:00" />
-          <Select label="Lab assigned" required options={[
-            { label: 'ENVTECH — LAB-2024-003', value: 'ENVTECH' }
+        <h3 className="qms-section-heading">B · Concrete & supply</h3>
+        <div className="qms-grid-3">
+          <Select label="Grade" required value={gradeId} onChange={(e) => setGradeId(e.target.value)} options={[
+            { label: 'Select grade…', value: '' },
+            ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id })),
           ]} />
-          <Input label="No. of cubes cast" required type="number" value="6" />
+          <Select label="RMC supplier" required value={supplierId} onChange={(e) => setSupplierId(e.target.value)} options={[
+            { label: suppliers.length ? 'Select supplier…' : 'No suppliers yet', value: '' },
+            ...suppliers.map((s) => ({ label: s.supplier_name, value: s.supplier_id })),
+          ]} />
+          <Input label="Sub-contractor" value={subContractor} onChange={(e) => setSubContractor(e.target.value)} placeholder="Optional" />
         </div>
+      </Card>
 
-        <div className="qms-mt-4">
-          <label className="qms-input-label">Generated cube IDs</label>
-          <div className="qms-cube-tags">
-            {['C001', 'C002', 'C003', 'C004', 'C005', 'C006'].map(id => (
-              <span key={id} className="qms-cube-tag">{id}</span>
-            ))}
-          </div>
+      <Card className="qms-form-section">
+        <h3 className="qms-section-heading">C · Pour details</h3>
+        <div className="qms-grid-3">
+          <Input label="Pour date" type="date" required value={pourDate} onChange={(e) => setPourDate(e.target.value)} />
+          <Input label="Pour reference" value={pourReference} onChange={(e) => setPourReference(e.target.value)} placeholder="e.g. PC-T1-5F-001" />
+          <Input label="Planned volume (m³)" type="number" step="0.1" value={volume} onChange={(e) => setVolume(e.target.value)} />
         </div>
-
-        <Button variant="outline" size="sm" className="qms-mt-4" icon={<QrCode size={14}/>}>
-          Print QR labels (6)
-        </Button>
+        <p className="qms-text-sm text-muted" style={{ marginTop: 8 }}>
+          Pre-pour checklist, per-truck logging and cube sampling are added in later phases.
+        </p>
       </Card>
 
       <div className="qms-form-actions">
-        <Button variant="outline" style={{ flex: 1 }}>Save draft</Button>
-        <Button variant="primary" style={{ flex: 2 }}>Submit pour card</Button>
+        <Button type="button" variant="outline" style={{ flex: 1 }} onClick={() => navigate(`/app/projects/${pid}/pours`)}>
+          Cancel
+        </Button>
+        <Button type="submit" variant="primary" style={{ flex: 2 }} disabled={submitting || !canSubmit}>
+          {submitting ? 'Creating…' : 'Create pour card'}
+        </Button>
       </div>
-    </div>
+    </form>
   );
 };

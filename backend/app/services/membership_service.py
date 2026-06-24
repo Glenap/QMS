@@ -23,6 +23,16 @@ from app.repositories.auth_repo import AuthRepository
 from app.schemas.master import ProjectMemberCreate, ProjectMemberResponse
 from app.services.auth_service import _try_send_invitation_email
 
+
+def _member_status(user: User | None) -> str:
+    """Team-row status: DEACTIVATED (offboarded) > ACTIVE (verified) > UNVERIFIED."""
+    if user is None:
+        return "UNVERIFIED"
+    if user.is_offboarded:
+        return "DEACTIVATED"
+    return "ACTIVE" if user.is_active else "UNVERIFIED"
+
+
 # A project role implies the org-level role a freshly-invited user gets.
 PROJECT_ROLE_TO_ORG_ROLE = {
     ProjectRole.CLIENT_LEAD: UserRole.CLIENT_USER,
@@ -130,11 +140,7 @@ class MembershipService:
                 email=users[m.user_id].email if m.user_id in users else "",
                 full_name=users[m.user_id].full_name if m.user_id in users else None,
                 project_role=m.project_role,
-                status=(
-                    "ACTIVE"
-                    if m.user_id in users and users[m.user_id].is_active
-                    else "UNVERIFIED"
-                ),
+                status=_member_status(users.get(m.user_id)),
                 user_id=m.user_id,
                 assigned_at=m.assigned_at,
             )

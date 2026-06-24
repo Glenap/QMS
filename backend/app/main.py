@@ -2,7 +2,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, labs, projects, suppliers
+from app.routers import (
+    auth,
+    catalog,
+    confirmations,
+    dispatch_token,
+    dispatches,
+    floors,
+    labs,
+    mix_designs,
+    pours,
+    projects,
+    suppliers,
+)
 
 
 def create_app() -> FastAPI:
@@ -38,9 +50,15 @@ def create_app() -> FastAPI:
     app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
     app.include_router(suppliers.router, prefix=settings.API_V1_PREFIX)
     app.include_router(labs.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(catalog.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(floors.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(mix_designs.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(confirmations.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(pours.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(dispatches.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(dispatch_token.router, prefix=settings.API_V1_PREFIX)
 
     # Add remaining routers here as we build them:
-    # app.include_router(pours.router, prefix=settings.API_V1_PREFIX)
     # app.include_router(cube_tests.router, prefix=settings.API_V1_PREFIX)
     # app.include_router(ncr.router, prefix=settings.API_V1_PREFIX)
 

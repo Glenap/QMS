@@ -18,4 +18,13 @@ export const suppliersApi = {
       .get<SupplierResponse[]>(`/projects/${projectId}/suppliers`)
       .then((r) => r.data);
   },
+
+  // Re-send the confirmation email (contractor side).
+  resendConfirmation(projectId: number, supplierId: number): Promise<SupplierResponse> {
+    return api
+      .post<SupplierResponse>(
+        `/projects/${projectId}/suppliers/${supplierId}/resend-confirmation`,
+      )
+      .then((r) => r.data);
+  },
 };

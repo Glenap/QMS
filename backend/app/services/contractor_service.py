@@ -18,7 +18,7 @@ from app.core.exceptions import (
 from app.core.project_access import ensure_can_manage_client_side
 from app.core.security import create_invitation_token
 from app.models.auth import OrgType, User, UserRole
-from app.models.master import Project, ProjectContractor
+from app.models.master import Project, ProjectContractor, Tower
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.contractor_repo import ContractorRepository
 from app.schemas.master import (
@@ -86,16 +86,67 @@ class ContractorService:
         if await self.repo.get_existing_link(project.project_id, contractor_org_id):
             raise AlreadyExistsError("Contractor assignment")
 
+        scope = await self._scope_from_towers(project, data.tower_ids, data.scope)
+
         pc = await self.repo.add(
             ProjectContractor(
                 project_id=project.project_id,
                 contractor_org_id=contractor_org_id,
-                scope=data.scope,
+                scope=scope,
                 status="PENDING",
                 assigned_by=actor.user_id,
             )
         )
         return await self._to_response(pc)
+
+    async def _scope_from_towers(
+        self, project: Project, tower_ids: list[int], fallback: str | None
+    ) -> str:
+        """Turn the selected towers into a readable scope label stored verbatim
+        in ``ProjectContractor.scope``. No towers selected = the whole project.
+        A tower already assigned to another (non-declined) contractor is rejected
+        so two contractors never share a tower."""
+        if not tower_ids:
+            return fallback or "Entire project"
+
+        result = await self.session.execute(
+            select(Tower)
+            .where(
+                Tower.project_id == project.project_id,
+                Tower.tower_id.in_(tower_ids),
+            )
+            .order_by(Tower.tower_id)
+        )
+        towers = list(result.scalars().all())
+        if len(towers) != len(set(tower_ids)):
+            raise NotFoundError("Tower")
+
+        names = [t.tower_name for t in towers]
+        await self._reject_taken_towers(project, names)
+        return ", ".join(names)
+
+    async def _reject_taken_towers(
+        self, project: Project, selected_names: list[str]
+    ) -> None:
+        """Block towers already allotted to another contractor on this project.
+        Uses the readable ``scope`` label of existing assignments (the same
+        comma-joined tower names this service writes)."""
+        existing = await self.repo.list_for_project(project.project_id)
+        taken: set[str] = set()
+        whole_project_taken = False
+        for pc in existing:
+            if pc.status == "DECLINED":
+                continue
+            if not pc.scope or pc.scope == "Entire project":
+                whole_project_taken = True
+                continue
+            taken.update(name.strip() for name in pc.scope.split(","))
+
+        clashes = [n for n in selected_names if whole_project_taken or n in taken]
+        if clashes:
+            raise PermissionDeniedError(
+                f"Already assigned to another contractor: {', '.join(clashes)}"
+            )
 
     async def list_for_project(self, project: Project) -> list[ProjectContractorResponse]:
         pcs = await self.repo.list_for_project(project.project_id)

@@ -23,8 +23,10 @@ from sqlalchemy.pool import NullPool
 import app.models  # noqa: F401  — registers every table on Base.metadata
 from app.config import settings
 from app.database.base import Base
+from app.database.seed import COMPONENTS, GRADES
 from app.database.session import get_db
 from app.main import app
+from app.models.master import Component, Grade
 
 # ── Test database URLs ──────────────────────────────────────────────────────
 TEST_DB_NAME = "construction_test_db"
@@ -73,10 +75,14 @@ def _database():
 
 @pytest_asyncio.fixture
 async def engine(_database):
-    """Per-test async engine; truncates all tables for isolation."""
+    """Per-test async engine; truncates all tables then re-seeds the global
+    reference catalogs (grades/components) so each test starts clean but with
+    the catalogs present (the live DB gets them via an Alembic migration)."""
     eng = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     async with eng.begin() as conn:
         await conn.execute(text(_TRUNCATE_SQL))
+        await conn.execute(Grade.__table__.insert(), GRADES)
+        await conn.execute(Component.__table__.insert(), COMPONENTS)
     yield eng
     await eng.dispose()
 
@@ -107,6 +113,18 @@ async def client(engine, monkeypatch) -> AsyncClient:
     )
     monkeypatch.setattr(
         "app.services.auth_service.send_otp_email", _capture_otp
+    )
+    monkeypatch.setattr(
+        "app.services.supplier_service.send_supplier_confirmation_email", _no_email
+    )
+    monkeypatch.setattr(
+        "app.services.lab_service.send_lab_confirmation_email", _no_email
+    )
+    monkeypatch.setattr(
+        "app.services.dispatch_service.send_truck_dispatch_email", _no_email
+    )
+    monkeypatch.setattr(
+        "app.services.dispatch_service.send_truck_result_email", _no_email
     )
 
     TestSession = async_sessionmaker(

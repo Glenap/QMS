@@ -18,4 +18,11 @@ export const labsApi = {
       .get<LabResponse[]>(`/projects/${projectId}/labs`)
       .then((r) => r.data);
   },
+
+  // Re-send the confirmation email (contractor side).
+  resendConfirmation(projectId: number, labId: number): Promise<LabResponse> {
+    return api
+      .post<LabResponse>(`/projects/${projectId}/labs/${labId}/resend-confirmation`)
+      .then((r) => r.data);
+  },
 };

@@ -3,11 +3,11 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { Plus } from 'lucide-react';
+import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { suppliersApi } from '../../api/suppliers';
 import { getApiErrorMessage } from '../../api/client';
-import type { SupplierCreate, SupplierResponse } from '../../types/master';
+import type { ConfirmationStatus, SupplierCreate, SupplierResponse } from '../../types/master';
 
 const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
 const num = (v: string): number | undefined => {
@@ -15,6 +15,13 @@ const num = (v: string): number | undefined => {
   if (t === '') return undefined;
   const n = Number(t);
   return Number.isNaN(n) ? undefined : n;
+};
+
+const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
+  CONFIRMED: 'pass', PENDING: 'warn', DECLINED: 'fail',
+};
+const CONF_LABEL: Record<ConfirmationStatus, string> = {
+  CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
 };
 
 const EMPTY = { supplier_name: '', plant_name: '', gst_number: '', plant_location: '', plant_distance_km: '', contact_email: '', contact_phone: '' };
@@ -28,6 +35,7 @@ export const ProjectSuppliers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ ...EMPTY });
   const [submitting, setSubmitting] = useState(false);
+  const [resendingId, setResendingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -61,13 +69,30 @@ export const ProjectSuppliers: React.FC = () => {
     };
     try {
       const s = await suppliersApi.create(pid, payload);
-      setSuccess(`Supplier "${s.supplier_name}" registered.`);
+      setSuccess(
+        s.contact_email
+          ? `Supplier "${s.supplier_name}" registered — a confirmation email was sent to ${s.contact_email}.`
+          : `Supplier "${s.supplier_name}" registered. Add a contact email to send a confirmation request.`,
+      );
       setForm({ ...EMPTY });
       void load();
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to register supplier.'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResend = async (s: SupplierResponse) => {
+    setError(null); setSuccess(null); setResendingId(s.supplier_id);
+    try {
+      await suppliersApi.resendConfirmation(pid, s.supplier_id);
+      setSuccess(`Confirmation re-sent to ${s.contact_email}.`);
+      void load();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Unable to resend confirmation.'));
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -102,20 +127,39 @@ export const ProjectSuppliers: React.FC = () => {
         <div className="qms-p-4 qms-border-b"><h3 className="qms-section-heading-plain">Suppliers</h3></div>
         <div className="qms-table-container">
           <table className="qms-table">
-            <thead><tr><th>Supplier</th><th>Plant</th><th>Distance</th><th>Contact</th><th>Status</th></tr></thead>
+            <thead><tr><th>Supplier</th><th>Hired by</th><th>Plant</th><th>Distance</th><th>Contact</th><th>Confirmation</th></tr></thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="text-muted">Loading…</td></tr>
+                <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={5} className="text-muted">No suppliers yet.</td></tr>
+                <tr><td colSpan={6} className="text-muted">No suppliers yet.</td></tr>
               ) : (
                 rows.map((s) => (
                   <tr key={s.supplier_id}>
                     <td className="font-medium">{s.supplier_name}</td>
+                    <td>{s.contractor_org_name ?? '—'}</td>
                     <td>{s.plant_name ?? s.plant_location ?? '—'}</td>
                     <td>{s.plant_distance_km != null ? `${s.plant_distance_km} km` : '—'}</td>
                     <td>{s.contact_email ?? s.contact_phone ?? '—'}</td>
-                    <td><Badge variant={s.is_active ? 'pass' : 'pending'}>{s.is_active ? 'Active' : 'Inactive'}</Badge></td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Badge variant={CONF_VARIANT[s.status]}>{CONF_LABEL[s.status]}</Badge>
+                        {s.status === 'CONFIRMED' && s.confirmed_at && (
+                          <span className="qms-text-sm text-muted">{new Date(s.confirmed_at).toLocaleDateString()}</span>
+                        )}
+                        {canManage && s.status !== 'CONFIRMED' && s.contact_email && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<Mail size={13} />}
+                            disabled={resendingId === s.supplier_id}
+                            onClick={() => handleResend(s)}
+                          >
+                            {resendingId === s.supplier_id ? 'Sending…' : 'Resend'}
+                          </Button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}

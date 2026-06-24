@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -115,6 +116,12 @@ class User(Base):
     )
     is_org_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Offboarding: set by an org admin when someone leaves. Distinct from
+    # is_active (which doubles as "email verified") so a deactivated account
+    # can't be reactivated via the OTP flow.
+    is_offboarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Optional profile picture, stored as a small data: URL (no file storage yet).
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

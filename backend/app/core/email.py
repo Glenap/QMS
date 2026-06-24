@@ -114,6 +114,89 @@ async def send_otp_email(
     await fastmail.send_message(message)
 
 
+async def _send_confirmation_email(
+    *,
+    recipient: str,
+    party_name: str,
+    party_kind: str,  # "supplier" | "lab"
+    role_label: str,  # "RMC plant" | "testing lab"
+    registered_by: str,
+    project_name: str,
+    confirm_url: str,
+) -> None:
+    """Shared body for the supplier/lab confirmation handshake email."""
+    html_body = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto">
+      <h2 style="color:#1e293b">Confirm your details on Strata</h2>
+      <p>Hi {party_name},</p>
+      <p><strong>{registered_by}</strong> has registered your {role_label} on
+      <strong>Strata</strong> for the project <strong>{project_name}</strong>.</p>
+      <p>Please confirm your contact details so you can start receiving
+      requests. No account or password is needed.</p>
+      <p style="margin:24px 0">
+        <a href="{confirm_url}"
+           style="background:#1A56DB;color:#fff;text-decoration:none;
+                  padding:12px 24px;border-radius:8px;font-weight:600">
+          Review &amp; confirm
+        </a>
+      </p>
+      <p style="color:#64748b;font-size:13px">If this wasn't meant for you, you
+      can decline on that page. This link is unique to you — please don't share it.</p>
+    </div>
+    """
+    message = MessageSchema(
+        subject=f"Confirm your {role_label} for {project_name} — Strata",
+        recipients=[recipient],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await fastmail.send_message(message)
+
+
+async def send_supplier_confirmation_email(
+    supplier_email: str,
+    supplier_name: str,
+    project_name: str,
+    registered_by: str,
+    token: str,
+) -> None:
+    """Sent when a contractor registers an RMC supplier — confirmation handshake.
+    Link goes to: {FRONTEND_URL}/external/confirm/supplier?token={token}
+    """
+    confirm_url = f"{settings.FRONTEND_URL}/external/confirm/supplier?token={token}"
+    await _send_confirmation_email(
+        recipient=supplier_email,
+        party_name=supplier_name,
+        party_kind="supplier",
+        role_label="RMC plant",
+        registered_by=registered_by,
+        project_name=project_name,
+        confirm_url=confirm_url,
+    )
+
+
+async def send_lab_confirmation_email(
+    lab_email: str,
+    lab_name: str,
+    project_name: str,
+    registered_by: str,
+    token: str,
+) -> None:
+    """Sent when a contractor registers a testing lab — confirmation handshake.
+    Link goes to: {FRONTEND_URL}/external/confirm/lab?token={token}
+    """
+    confirm_url = f"{settings.FRONTEND_URL}/external/confirm/lab?token={token}"
+    await _send_confirmation_email(
+        recipient=lab_email,
+        party_name=lab_name,
+        party_kind="lab",
+        role_label="testing lab",
+        registered_by=registered_by,
+        project_name=project_name,
+        confirm_url=confirm_url,
+    )
+
+
 async def send_truck_dispatch_email(
     supplier_email: str,
     supplier_name: str,

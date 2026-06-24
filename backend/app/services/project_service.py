@@ -23,6 +23,7 @@ from app.schemas.master import (
     ProjectCreate,
     ProjectDetailResponse,
     ProjectResponse,
+    TowerResponse,
 )
 
 CLIENT_SIDE_ROLES = {UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER}
@@ -79,7 +80,25 @@ class ProjectService:
                 if ids
                 else []
             )
-        return [ProjectResponse.model_validate(p) for p in projects]
+
+        responses = [ProjectResponse.model_validate(p) for p in projects]
+        # Contractor-side viewers see their allotted towers, not the project-wide
+        # tower count, so the list reflects what they actually work on.
+        if projects and user.role not in CLIENT_SIDE_ROLES:
+            res = await self.session.execute(
+                select(ProjectContractor.project_id, ProjectContractor.scope).where(
+                    ProjectContractor.contractor_org_id == user.org_id,
+                    ProjectContractor.project_id.in_([p.project_id for p in projects]),
+                )
+            )
+            scope_by_pid = {pid: scope for pid, scope in res.all()}
+            for r in responses:
+                r.assigned_scope = scope_by_pid.get(r.project_id)
+        return responses
+
+    async def list_towers(self, project: Project) -> list[TowerResponse]:
+        towers = await self.repo.list_towers(project.project_id)
+        return [TowerResponse.model_validate(t) for t in towers]
 
     async def get_detail(self, project: Project, user: User) -> ProjectDetailResponse:
         base = ProjectResponse.model_validate(project)

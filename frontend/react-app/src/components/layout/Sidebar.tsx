@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   CheckSquare,
   Truck,
+  Send,
   Building,
   Users,
   MessageCircle,
@@ -17,6 +18,7 @@ import {
   Inbox,
   ChevronLeft,
   Layers,
+  FlaskConical,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { initials, roleLabel } from '../../lib/initials';
@@ -79,7 +81,10 @@ export const Sidebar: React.FC = () => {
 
           <div className="qms-nav-section">Operations</div>
           {isQualityEngineer && (
-            <NavLink to={`${base}/pours/new`} className={item}><FileText size={18} /> Pour cards</NavLink>
+            <NavLink to={`${base}/pours`} className={item}><FileText size={18} /> Pour cards</NavLink>
+          )}
+          {isQualityEngineer && (
+            <NavLink to={`${base}/dispatches`} className={item}><Send size={18} /> Dispatches</NavLink>
           )}
           {isQualityEngineer && (
             <NavLink to={`${base}/results/1`} className={item}><TestTube size={18} /> Cube results</NavLink>
@@ -100,6 +105,7 @@ export const Sidebar: React.FC = () => {
           )}
           <NavLink to={`${base}/suppliers`} className={item}><Truck size={18} /> Suppliers</NavLink>
           <NavLink to={`${base}/labs`} className={item}><Building size={18} /> Laboratories</NavLink>
+          <NavLink to={`${base}/mix-designs`} className={item}><FlaskConical size={18} /> Mix designs</NavLink>
 
           <div className="qms-nav-section">AI</div>
           <NavLink to={`${base}/chatbot`} className={item}><MessageCircle size={18} /> Strata assistant</NavLink>
@@ -119,8 +125,21 @@ export const Sidebar: React.FC = () => {
 
       <div className="qms-sidebar-bottom">
         <div className="qms-user-row">
-          <div className="qms-avatar">{initials(user?.full_name)}</div>
-          <div>
+          <div
+            className="qms-avatar"
+            role="button"
+            aria-label="View profile"
+            title="View profile"
+            onClick={() => navigate('/app/profile')}
+            style={
+              user?.avatar_url
+                ? { background: `center / cover no-repeat url(${user.avatar_url})`, cursor: 'pointer' }
+                : { cursor: 'pointer' }
+            }
+          >
+            {!user?.avatar_url && initials(user?.full_name)}
+          </div>
+          <div style={{ cursor: 'pointer' }} onClick={() => navigate('/app/profile')}>
             <div className="qms-user-name">{user?.full_name ?? 'Not signed in'}</div>
             <div className="qms-user-role">{roleLabel(user?.role)}</div>
           </div>
