@@ -7,11 +7,25 @@ Engineer; later phases attach truck dispatches and cube samples.
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, PourAlreadyCompletedError
+from app.core.exceptions import (
+    NotFoundError,
+    PermissionDeniedError,
+    PourAlreadyCompletedError,
+)
 from app.models.auth import User
-from app.models.master import Component, Floor, Grade, MixDesign, Project, Supplier, Tower
+from app.models.master import (
+    Component,
+    Floor,
+    Grade,
+    MixDesign,
+    Project,
+    ProjectContractor,
+    Supplier,
+    Tower,
+)
 from app.models.transaction import Pour, PourStatus
 from app.repositories.pour_repo import PourRepository
 from app.schemas.transaction import PourComplete, PourCreate, PourResponse
@@ -30,6 +44,7 @@ class PourService:
         tower = await self.session.get(Tower, data.tower_id)
         if not tower or tower.project_id != pid:
             raise NotFoundError("Tower")
+        await self._ensure_tower_in_scope(tower, project, user)
 
         floor = await self.session.get(Floor, data.floor_id)
         if not floor or floor.tower_id != data.tower_id:
@@ -63,6 +78,28 @@ class PourService:
             )
         )
         return await self._to_response(pour)
+
+    async def _ensure_tower_in_scope(
+        self, tower: Tower, project: Project, user: User
+    ) -> None:
+        """A contractor may only raise pours on towers allotted to them. The
+        contractor's ``ProjectContractor.scope`` is a readable label of tower
+        names ("Tower A, Tower B"); ``None`` or "Entire project" means no
+        restriction (and covers client-side actors with no contractor link)."""
+        res = await self.session.execute(
+            select(ProjectContractor.scope).where(
+                ProjectContractor.contractor_org_id == user.org_id,
+                ProjectContractor.project_id == project.project_id,
+            )
+        )
+        scope = res.scalar_one_or_none()
+        if not scope or scope == "Entire project":
+            return
+        allowed = {name.strip() for name in scope.split(",")}
+        if tower.tower_name not in allowed:
+            raise PermissionDeniedError(
+                "That tower isn't part of your contract scope on this project"
+            )
 
     async def list_for_project(self, project: Project) -> list[PourResponse]:
         pours = await self.repo.list_by(

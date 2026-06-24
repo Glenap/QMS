@@ -103,6 +103,16 @@ class ProjectService:
     async def get_detail(self, project: Project, user: User) -> ProjectDetailResponse:
         base = ProjectResponse.model_validate(project)
         side = "CLIENT" if user.role in CLIENT_SIDE_ROLES else "CONTRACTOR"
+        # Contractor-side viewers carry their allotted-tower scope so the UI can
+        # restrict tower pickers (e.g. raising a pour) to towers they work on.
+        if user.role not in CLIENT_SIDE_ROLES:
+            res = await self.session.execute(
+                select(ProjectContractor.scope).where(
+                    ProjectContractor.contractor_org_id == user.org_id,
+                    ProjectContractor.project_id == project.project_id,
+                )
+            )
+            base.assigned_scope = res.scalar_one_or_none()
         access = ProjectAccess(
             side=side,
             can_manage_client_side=await can_manage_client_side(

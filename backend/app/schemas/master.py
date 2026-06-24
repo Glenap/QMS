@@ -263,6 +263,24 @@ class AssignedProjectResponse(BaseModel):
     assigned_at: datetime
 
 
+class ContractorEngagement(BaseModel):
+    """One project a contractor org is already engaged on (for the busy warning)."""
+    project_id: int
+    project_name: str
+    start_date: date | None
+    end_date: date | None
+    status: str  # PENDING | ACCEPTED
+
+
+class AvailableContractorResponse(BaseModel):
+    """A contractor org the client may re-use on another project, plus the
+    projects it's currently engaged on so the UI can warn before assigning."""
+    contractor_org_id: int
+    org_name: str
+    contact_email: str | None
+    engagements: list[ContractorEngagement]
+
+
 class ProjectAccess(BaseModel):
     """The viewer's capabilities on a project — drives role-aware UI."""
     side: str  # CLIENT | CONTRACTOR

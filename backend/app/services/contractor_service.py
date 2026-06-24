@@ -23,6 +23,8 @@ from app.repositories.auth_repo import AuthRepository
 from app.repositories.contractor_repo import ContractorRepository
 from app.schemas.master import (
     AssignedProjectResponse,
+    AvailableContractorResponse,
+    ContractorEngagement,
     ProjectContractorCreate,
     ProjectContractorResponse,
 )
@@ -151,6 +153,48 @@ class ContractorService:
     async def list_for_project(self, project: Project) -> list[ProjectContractorResponse]:
         pcs = await self.repo.list_for_project(project.project_id)
         return [await self._to_response(pc) for pc in pcs]
+
+    async def list_available_for_project(
+        self, project: Project, actor: User
+    ) -> list[AvailableContractorResponse]:
+        """Contractor orgs this client previously brought on that aren't already
+        linked to *this* project — each annotated with the other projects they're
+        currently engaged on (PENDING/ACCEPTED) so the UI can warn before reuse."""
+        await ensure_can_manage_client_side(self.session, actor, project)
+
+        orgs = await self.repo.contractor_orgs_registered_by(project.org_id)
+        existing = await self.repo.list_for_project(project.project_id)
+        already_linked = {pc.contractor_org_id for pc in existing}
+
+        out: list[AvailableContractorResponse] = []
+        for org in orgs:
+            if org.org_id in already_linked:
+                continue
+            engagements: list[ContractorEngagement] = []
+            for pc in await self.repo.list_for_contractor_org(org.org_id):
+                if pc.status == "DECLINED" or pc.project_id == project.project_id:
+                    continue
+                other = await self._get_project(pc.project_id)
+                if not other:
+                    continue
+                engagements.append(
+                    ContractorEngagement(
+                        project_id=other.project_id,
+                        project_name=other.project_name,
+                        start_date=other.start_date,
+                        end_date=other.end_date,
+                        status=pc.status,
+                    )
+                )
+            out.append(
+                AvailableContractorResponse(
+                    contractor_org_id=org.org_id,
+                    org_name=org.org_name,
+                    contact_email=org.contact_email,
+                    engagements=engagements,
+                )
+            )
+        return out
 
     async def list_assigned_for_user(self, user: User) -> list[AssignedProjectResponse]:
         """Project links for the caller's contractor org (the accept screen)."""

@@ -203,6 +203,65 @@ class TestRegisterContractor:
         assert resp.status_code in (401, 403)
 
 
+class TestAvailableContractors:
+    async def test_reusable_contractor_lists_its_other_engagement(self, client):
+        """A contractor on project A shows up as available for project B, with
+        project A listed as an engagement so the UI can warn before reuse."""
+        token, _ = await register_and_token(client)
+        proj_a = await client.post(
+            f"{API}/projects",
+            json=sample_project_payload(project_name="Project A", towers=[]),
+            headers=bearer(token),
+        )
+        pa_id = proj_a.json()["project_id"]
+        await client.post(
+            f"{API}/projects/{pa_id}/contractors",
+            json={"org_name": "Reuse Co", "contact_email": "reuse@example.com"},
+            headers=bearer(token),
+        )
+        proj_b = await client.post(
+            f"{API}/projects",
+            json=sample_project_payload(project_name="Project B", towers=[]),
+            headers=bearer(token),
+        )
+        pb_id = proj_b.json()["project_id"]
+
+        avail = await client.get(
+            f"{API}/projects/{pb_id}/available-contractors", headers=bearer(token)
+        )
+        assert avail.status_code == 200, avail.text
+        by_name = {a["org_name"]: a for a in avail.json()}
+        assert "Reuse Co" in by_name
+        engagements = by_name["Reuse Co"]["engagements"]
+        assert any(
+            e["project_name"] == "Project A" and e["status"] == "PENDING"
+            for e in engagements
+        )
+
+    async def test_excludes_contractor_already_on_this_project(self, client):
+        token, _ = await register_and_token(client)
+        proj = await client.post(
+            f"{API}/projects",
+            json=sample_project_payload(project_name="Solo", towers=[]),
+            headers=bearer(token),
+        )
+        pid = proj.json()["project_id"]
+        await client.post(
+            f"{API}/projects/{pid}/contractors",
+            json={"org_name": "OnHere Co", "contact_email": "onhere@example.com"},
+            headers=bearer(token),
+        )
+        avail = await client.get(
+            f"{API}/projects/{pid}/available-contractors", headers=bearer(token)
+        )
+        assert avail.status_code == 200, avail.text
+        assert all(a["org_name"] != "OnHere Co" for a in avail.json())
+
+    async def test_requires_auth(self, client):
+        resp = await client.get(f"{API}/projects/1/available-contractors")
+        assert resp.status_code in (401, 403)
+
+
 class TestInviteEndpoint:
     async def test_client_admin_can_invite_client_user(self, client):
         token, _ = await register_and_token(client)

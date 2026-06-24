@@ -17,6 +17,7 @@ from app.models.auth import User, UserRole
 from app.models.master import Project
 from app.schemas.master import (
     AssignedProjectResponse,
+    AvailableContractorResponse,
     ProjectContractorCreate,
     ProjectContractorResponse,
     ProjectCreate,
@@ -125,6 +126,17 @@ async def list_contractors(
     db: AsyncSession = Depends(get_db),
 ):
     return await ContractorService(db).list_for_project(project)
+
+
+@router.get("/{project_id}/available-contractors", response_model=list[AvailableContractorResponse])
+async def list_available_contractors(
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reusable contractor orgs (not yet on this project) + their other
+    engagements, so the client can knowingly assign a busy contractor."""
+    return await ContractorService(db).list_available_for_project(project, current_user)
 
 
 @router.post("/{project_id}/contractors", response_model=ProjectContractorResponse, status_code=201)
