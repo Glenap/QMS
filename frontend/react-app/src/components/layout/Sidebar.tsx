@@ -88,7 +88,7 @@ export const Sidebar: React.FC = () => {
             <NavLink to={`${base}/dispatches`} className={item}><Send size={18} /> Dispatches</NavLink>
           )}
           {isQualityEngineer && (
-            <NavLink to={`${base}/results/1`} className={item}><TestTube size={18} /> Cube results</NavLink>
+            <NavLink to={`${base}/cube`} className={item}><TestTube size={18} /> Cube tests</NavLink>
           )}
           <NavLink to={`${base}/trace`} className={item}><LinkIcon size={18} /> Traceability</NavLink>
           {isSupervisor && (

@@ -34,7 +34,7 @@ import { Traceability } from './pages/Traceability';
 import { PourCardForm } from './pages/PourCardForm';
 import { ProjectPours } from './pages/project/ProjectPours';
 import { ProjectDispatches } from './pages/project/ProjectDispatches';
-import { CubeResult } from './pages/CubeResult';
+import { ProjectCubeTests } from './pages/project/ProjectCubeTests';
 import { GateScan } from './pages/GateScan';
 import { NCRDashboard } from './pages/NCRDashboard';
 import { NCRForm } from './pages/NCRForm';
@@ -73,7 +73,7 @@ function App() {
               <Route path="pours" element={<ProjectPours />} />
               <Route path="pours/new" element={<PourCardForm />} />
               <Route path="dispatches" element={<ProjectDispatches />} />
-              <Route path="results/:id" element={<CubeResult />} />
+              <Route path="cube" element={<ProjectCubeTests />} />
               <Route path="gate" element={<GateScan />} />
               <Route path="ncr" element={<NCRDashboard />} />
               <Route path="ncr/new" element={<NCRForm />} />
