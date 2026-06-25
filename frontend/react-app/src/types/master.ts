@@ -681,3 +681,130 @@ export interface NCRDetailResponse extends NCRResponse {
   corrective_actions: CorrectiveActionResponse[];
   penalties: PenaltyResponse[];
 }
+
+// ── Phase 6: analytics ──────────────────────────────────────────────────────
+// Read-only metric bundles from /projects/{id}/analytics/*. All fields are
+// additive — new metrics append, so dashboards/forms can grow without churn.
+
+export interface OverviewKpis {
+  pour_count: number;
+  pour_volume_cum: number;
+  test_count: number;
+  pass_count: number;
+  fail_count: number;
+  critical_count: number;
+  pass_rate_pct: number | null;
+  avg_strength_mpa: number | null;
+  ncr_open: number;
+  ncr_under_review: number;
+  ncr_closed: number;
+  avg_days_to_close: number | null;
+  truck_total: number;
+  truck_accepted: number;
+  truck_rejected: number;
+  acceptance_pct: number | null;
+}
+
+export interface GradeTrendPoint {
+  period: string; // 'YYYY-MM'
+  grade_name: string;
+  test_count: number;
+  pass_count: number;
+  pass_rate_pct: number | null;
+}
+
+export interface StrengthBucket {
+  label: string;
+  count: number;
+}
+
+export interface ResultBreakdown {
+  status: string;
+  count: number;
+}
+
+export interface QualityAnalytics {
+  grade_trend: GradeTrendPoint[];
+  strength_distribution: StrengthBucket[];
+  result_breakdown: ResultBreakdown[];
+}
+
+export interface SupplierScore {
+  supplier_id: number;
+  supplier_name: string;
+  pour_count: number;
+  pour_volume_cum: number;
+  test_count: number;
+  pass_count: number;
+  pass_rate_pct: number | null;
+  avg_strength_mpa: number | null;
+}
+
+export interface QualityFilters {
+  date_from?: string; // ISO date
+  date_to?: string; // ISO date
+  grade_id?: number;
+  supplier_id?: number;
+  tower_id?: number;
+}
+
+// ── Phase 6: traceability ───────────────────────────────────────────────────
+
+export interface TraceRecord {
+  sample_id: number;
+  sample_reference: string | null;
+  pour_id: number;
+  pour_reference: string | null;
+  cast_date: string;
+  tower_name: string | null;
+  floor_label: string | null;
+  component_type: string | null;
+  grade_name: string | null;
+  supplier_name: string | null;
+  result_status: string | null;
+  ncr_number: string | null;
+}
+
+export interface TraceTest {
+  test_id: number;
+  test_age_days: number;
+  test_date: string;
+  observed_strength_mpa: number;
+  required_strength_mpa: number;
+  result_status: string;
+  lab_name: string | null;
+  ncr_id: number | null;
+  ncr_number: string | null;
+}
+
+export interface TraceTruck {
+  dispatch_token_id: number;
+  vehicle_number: string | null;
+  driver_name: string | null;
+  batch_number: string | null;
+  challan_number: string | null;
+  volume_cum: number | null;
+  slump_at_plant_mm: number | null;
+  status: string;
+  supplier_name: string | null;
+  grade_name: string | null;
+}
+
+export interface TraceDetail {
+  sample_id: number;
+  sample_reference: string | null;
+  cast_date: string;
+  lab_name: string | null;
+  pour_id: number;
+  pour_reference: string | null;
+  pour_date: string;
+  volume_cum: number | null;
+  pour_status: string;
+  tower_name: string | null;
+  floor_label: string | null;
+  component_type: string | null;
+  grade_name: string | null;
+  supplier_name: string | null;
+  tests: TraceTest[];
+  trucks: TraceTruck[];
+}

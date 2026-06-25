@@ -7,6 +7,8 @@ import { useProject } from '../../components/layout/ProjectLayout';
 import { projectsApi } from '../../api/projects';
 import { suppliersApi } from '../../api/suppliers';
 import { labsApi } from '../../api/labs';
+import { analyticsApi } from '../../api/analytics';
+import type { OverviewKpis } from '../../types/master';
 import '../Dashboard.css';
 
 interface Counts {
@@ -17,10 +19,15 @@ interface Counts {
   labs: number;
 }
 
-const SAMPLE_TREND = [
-  { name: 'Jan', rate: 0 }, { name: 'Feb', rate: 0 }, { name: 'Mar', rate: 0 },
-  { name: 'Apr', rate: 0 }, { name: 'May', rate: 0 }, { name: 'Jun', rate: 0 },
-];
+interface TrendPoint {
+  name: string;
+  rate: number;
+}
+
+const fmtNum = (n: number | null | undefined): string =>
+  n == null ? '—' : n.toLocaleString();
+const fmtPct = (n: number | null | undefined): string =>
+  n == null ? '—' : `${n}%`;
 
 const ChecklistItem: React.FC<{ done: boolean; children: React.ReactNode }> = ({ done, children }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', fontSize: 14 }}>
@@ -42,6 +49,8 @@ export const ProjectOverview: React.FC = () => {
   const navigate = useNavigate();
   const pid = project.project_id;
   const [counts, setCounts] = useState<Counts | null>(null);
+  const [kpis, setKpis] = useState<OverviewKpis | null>(null);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +76,39 @@ export const ProjectOverview: React.FC = () => {
     })();
     return () => { cancelled = true; };
   }, [pid, project.access.side]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [overview, quality] = await Promise.all([
+          analyticsApi.overview(pid),
+          analyticsApi.quality(pid),
+        ]);
+        if (cancelled) return;
+        setKpis(overview);
+        // Overall monthly pass rate = total passes / total tests in each period.
+        const byPeriod = new Map<string, { pass: number; total: number }>();
+        for (const pt of quality.grade_trend) {
+          const acc = byPeriod.get(pt.period) ?? { pass: 0, total: 0 };
+          acc.pass += pt.pass_count;
+          acc.total += pt.test_count;
+          byPeriod.set(pt.period, acc);
+        }
+        setTrend(
+          [...byPeriod.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([period, { pass, total }]) => ({
+              name: period,
+              rate: total ? Math.round((pass / total) * 1000) / 10 : 0,
+            })),
+        );
+      } catch {
+        if (!cancelled) { setKpis(null); setTrend([]); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pid]);
 
   const quickLinks = [
     { label: 'Team', icon: <Users size={18} />, to: `/app/projects/${pid}/team`, count: counts?.members },
@@ -95,10 +137,10 @@ export const ProjectOverview: React.FC = () => {
       </div>
 
       <div className="qms-kpi-grid">
-        <Kpi label="Total pours" value="—" note="Coming soon" />
-        <Kpi label="Pass rate" value="—" note="Coming soon" />
-        <Kpi label="Open NCRs" value="—" note="Coming soon" />
-        <Kpi label="Pending cube tests" value="—" note="Coming soon" />
+        <Kpi label="Total pours" value={fmtNum(kpis?.pour_count)} note={kpis ? `${fmtNum(kpis.pour_volume_cum)} m³ poured` : undefined} />
+        <Kpi label="Pass rate" value={fmtPct(kpis?.pass_rate_pct)} note={kpis ? `${fmtNum(kpis.test_count)} tests` : undefined} />
+        <Kpi label="Open NCRs" value={fmtNum(kpis?.ncr_open)} note={kpis ? `${fmtNum(kpis.critical_count)} critical` : undefined} />
+        <Kpi label="Avg strength" value={kpis?.avg_strength_mpa != null ? `${kpis.avg_strength_mpa} MPa` : '—'} note={kpis ? `${fmtPct(kpis.acceptance_pct)} truck accept` : undefined} />
       </div>
 
       <div className="qms-dashboard-charts">
@@ -106,7 +148,7 @@ export const ProjectOverview: React.FC = () => {
           <h3 className="qms-chart-title">Monthly pass rate</h3>
           <div className="qms-chart-container">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={SAMPLE_TREND}>
+              <AreaChart data={trend}>
                 <defs>
                   <linearGradient id="pr" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="var(--green)" stopOpacity={0.3} />
@@ -120,9 +162,11 @@ export const ProjectOverview: React.FC = () => {
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <p className="qms-text-sm text-muted" style={{ marginTop: 8 }}>
-            Live cube-test metrics appear here once pours are logged for this project.
-          </p>
+          {trend.length === 0 && (
+            <p className="qms-text-sm text-muted" style={{ marginTop: 8 }}>
+              Live cube-test metrics appear here once tests are recorded for this project.
+            </p>
+          )}
         </Card>
 
         <Card className="qms-chart-card">

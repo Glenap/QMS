@@ -1,121 +1,169 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart,
-  PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Card } from '../components/ui/Card';
 import { Select } from '../components/ui/Select';
-import { Button } from '../components/ui/Button';
-import { Download } from 'lucide-react';
+import { Input } from '../components/ui/Input';
+import { useProject } from '../components/layout/ProjectLayout';
+import { analyticsApi } from '../api/analytics';
+import { catalogApi } from '../api/catalog';
+import { projectsApi } from '../api/projects';
+import type {
+  GradeResponse, GradeTrendPoint, OverviewKpis,
+  QualityAnalytics, QualityFilters, SupplierScore, TowerResponse,
+} from '../types/master';
 import './Analytics.css';
 
-const passRateTrend = [
-  { month: 'Jan', M40: 88, M35: 91, M30: 95 },
-  { month: 'Feb', M40: 86, M35: 89, M30: 92 },
-  { month: 'Mar', M40: 90, M35: 93, M30: 96 },
-  { month: 'Apr', M40: 87, M35: 90, M30: 94 },
-  { month: 'May', M40: 91, M35: 94, M30: 97 },
-  { month: 'Jun', M40: 93, M35: 96, M30: 98 },
-];
+const LINE_COLORS = ['var(--blue)', 'var(--green)', 'var(--amber)', 'var(--red)', '#8b5cf6', '#06b6d4'];
 
-const supplierPerformance = [
-  { supplier: 'UltraTech', pours: 98, passRate: 94.2, avgStrength: 48.1 },
-  { supplier: 'ACC', pours: 74, passRate: 88.0, avgStrength: 44.3 },
-  { supplier: 'Premia RMC', pours: 52, passRate: 91.3, avgStrength: 46.8 },
-  { supplier: 'Nuvoco', pours: 23, passRate: 82.6, avgStrength: 41.9 },
-];
+const passRateColor = (rate: number): string =>
+  rate >= 90 ? 'var(--green)' : rate >= 85 ? 'var(--amber)' : 'var(--red)';
 
-const strengthDistribution = [
-  { range: '< 35', count: 4 },
-  { range: '35–38', count: 12 },
-  { range: '38–42', count: 63 },
-  { range: '42–46', count: 87 },
-  { range: '46–50', count: 54 },
-  { range: '> 50', count: 27 },
-];
+// Pivot the long-form grade trend ([{period, grade, rate}, …]) into the
+// wide shape recharts wants ([{period, M40: 92, M30: 88}, …]) + the grade set.
+function pivotTrend(rows: GradeTrendPoint[]): { data: Record<string, number | string>[]; grades: string[] } {
+  const grades = [...new Set(rows.map((r) => r.grade_name))].sort();
+  const byPeriod = new Map<string, Record<string, number | string>>();
+  for (const r of rows) {
+    const point = byPeriod.get(r.period) ?? { period: r.period };
+    if (r.pass_rate_pct != null) point[r.grade_name] = r.pass_rate_pct;
+    byPeriod.set(r.period, point);
+  }
+  const data = [...byPeriod.values()].sort((a, b) =>
+    String(a.period).localeCompare(String(b.period)));
+  return { data, grades };
+}
 
-const towerProgress = [
-  { subject: 'T1 Emerald', A: 92 },
-  { subject: 'T2 Sapphire', A: 76 },
-  { subject: 'T3 Pearl', A: 54 },
-];
+const Kpi: React.FC<{ value: string; label: string; color?: string }> = ({ value, label, color }) => (
+  <div className="qms-an-kpi">
+    <div className="qms-an-kpi-val" style={color ? { color } : undefined}>{value}</div>
+    <div className="qms-an-kpi-label">{label}</div>
+  </div>
+);
 
 export const Analytics: React.FC = () => {
+  const { project } = useProject();
+  const pid = project.project_id;
+
+  const [kpis, setKpis] = useState<OverviewKpis | null>(null);
+  const [suppliers, setSuppliers] = useState<SupplierScore[]>([]);
+  const [quality, setQuality] = useState<QualityAnalytics | null>(null);
+  const [towers, setTowers] = useState<TowerResponse[]>([]);
+  const [grades, setGrades] = useState<GradeResponse[]>([]);
+
+  // Dimension filters (apply to the quality charts only).
+  const [towerId, setTowerId] = useState('ALL');
+  const [gradeId, setGradeId] = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // Whole-project context: KPIs, supplier scorecard, filter option lists.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [o, s, t, g] = await Promise.all([
+        analyticsApi.overview(pid).catch(() => null),
+        analyticsApi.suppliers(pid).catch(() => []),
+        projectsApi.towers(pid).catch(() => []),
+        catalogApi.grades().catch(() => []),
+      ]);
+      if (cancelled) return;
+      setKpis(o); setSuppliers(s); setTowers(t); setGrades(g);
+    })();
+    return () => { cancelled = true; };
+  }, [pid]);
+
+  // Quality charts re-fetch whenever a filter changes.
+  useEffect(() => {
+    let cancelled = false;
+    const filters: QualityFilters = {};
+    if (towerId !== 'ALL') filters.tower_id = Number(towerId);
+    if (gradeId !== 'ALL') filters.grade_id = Number(gradeId);
+    if (dateFrom) filters.date_from = dateFrom;
+    if (dateTo) filters.date_to = dateTo;
+    (async () => {
+      const q = await analyticsApi.quality(pid, filters).catch(() => null);
+      if (!cancelled) setQuality(q);
+    })();
+    return () => { cancelled = true; };
+  }, [pid, towerId, gradeId, dateFrom, dateTo]);
+
+  const trend = useMemo(() => pivotTrend(quality?.grade_trend ?? []), [quality]);
+  const failures = kpis ? kpis.fail_count + kpis.critical_count : null;
+  const hasQuality = (quality?.grade_trend.length ?? 0) > 0
+    || (quality?.strength_distribution.length ?? 0) > 0;
+
   return (
     <div className="qms-analytics">
       <div className="qms-analytics-header">
         <div>
           <h1 className="qms-page-title-main">Analytics</h1>
-          <p className="qms-page-subtitle">Concrete quality performance across all towers & suppliers</p>
+          <p className="qms-page-subtitle">Concrete quality performance across towers &amp; suppliers</p>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <Select
-            options={[
-              { label: 'All Towers', value: 'ALL' },
-              { label: 'T1 – Emerald', value: 'T1' },
-              { label: 'T2 – Sapphire', value: 'T2' },
-              { label: 'T3 – Pearl', value: 'T3' },
-            ]}
-            fullWidth={false}
+            label="Tower" fullWidth={false} value={towerId}
+            onChange={(e) => setTowerId(e.target.value)}
+            options={[{ label: 'All towers', value: 'ALL' },
+              ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id }))]}
           />
-          <Button variant="outline" icon={<Download size={14} />}>Export PDF</Button>
+          <Select
+            label="Grade" fullWidth={false} value={gradeId}
+            onChange={(e) => setGradeId(e.target.value)}
+            options={[{ label: 'All grades', value: 'ALL' },
+              ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id }))]}
+          />
+          <Input label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} fullWidth={false} />
+          <Input label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} fullWidth={false} />
         </div>
       </div>
 
-      {/* Summary KPI Strip */}
+      {/* Summary KPI strip (whole project) */}
       <div className="qms-an-kpi-row">
-        <div className="qms-an-kpi">
-          <div className="qms-an-kpi-val">247</div>
-          <div className="qms-an-kpi-label">Total Pours</div>
-        </div>
-        <div className="qms-an-kpi">
-          <div className="qms-an-kpi-val" style={{ color: 'var(--green)' }}>91.4%</div>
-          <div className="qms-an-kpi-label">Overall Pass Rate</div>
-        </div>
-        <div className="qms-an-kpi">
-          <div className="qms-an-kpi-val">45.6 MPa</div>
-          <div className="qms-an-kpi-label">Avg. 28-day Strength</div>
-        </div>
-        <div className="qms-an-kpi">
-          <div className="qms-an-kpi-val" style={{ color: 'var(--red)' }}>21</div>
-          <div className="qms-an-kpi-label">Total Failures</div>
-        </div>
-        <div className="qms-an-kpi">
-          <div className="qms-an-kpi-val" style={{ color: 'var(--amber)' }}>8</div>
-          <div className="qms-an-kpi-label">Borderline Results</div>
-        </div>
-        <div className="qms-an-kpi">
-          <div className="qms-an-kpi-val">3</div>
-          <div className="qms-an-kpi-label">Open NCRs</div>
-        </div>
+        <Kpi value={kpis ? kpis.pour_count.toLocaleString() : '—'} label="Total Pours" />
+        <Kpi value={kpis?.pass_rate_pct != null ? `${kpis.pass_rate_pct}%` : '—'} label="Overall Pass Rate" color="var(--green)" />
+        <Kpi value={kpis?.avg_strength_mpa != null ? `${kpis.avg_strength_mpa} MPa` : '—'} label="Avg. Strength" />
+        <Kpi value={failures != null ? String(failures) : '—'} label="Total Failures" color="var(--red)" />
+        <Kpi value={kpis ? String(kpis.critical_count) : '—'} label="Critical Failures" color="var(--amber)" />
+        <Kpi value={kpis ? String(kpis.ncr_open) : '—'} label="Open NCRs" />
       </div>
 
-      {/* Charts Row 1 */}
+      {!hasQuality && (
+        <Card>
+          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>
+            No cube-test data matches the current filters yet. Record strength tests
+            (or widen the filters) to populate the quality charts.
+          </p>
+        </Card>
+      )}
+
+      {/* Charts Row 1 — trend + distribution */}
       <div className="qms-an-grid-2">
         <Card>
           <h3 className="qms-chart-heading">Pass Rate Trend by Grade (%)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={passRateTrend}>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={trend.data}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-              <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[80, 100]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="period" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="M40" stroke="var(--blue)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="M35" stroke="var(--green)" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="M30" stroke="var(--amber)" strokeWidth={2} dot={false} />
+              {trend.grades.map((g, i) => (
+                <Line key={g} type="monotone" dataKey={g} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2} dot={false} connectNulls />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         </Card>
 
         <Card>
-          <h3 className="qms-chart-heading">Strength Distribution — 28 Day (MPa)</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={strengthDistribution}>
+          <h3 className="qms-chart-heading">Strength Distribution (MPa)</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={quality?.strength_distribution ?? []}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-              <XAxis dataKey="range" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip />
               <Bar dataKey="count" fill="var(--blue)" radius={[4, 4, 0, 0]} />
             </BarChart>
@@ -123,72 +171,34 @@ export const Analytics: React.FC = () => {
         </Card>
       </div>
 
-      {/* Charts Row 2 */}
-      <div className="qms-an-grid-2">
-        <Card>
-          <h3 className="qms-chart-heading">Supplier Performance Comparison</h3>
+      {/* Charts Row 2 — supplier scorecard */}
+      <Card>
+        <h3 className="qms-chart-heading">Supplier Performance Comparison</h3>
+        {suppliers.length === 0 ? (
+          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>No suppliers have poured on this project yet.</p>
+        ) : (
           <div className="qms-supplier-table">
             <div className="qms-sup-head">
-              <span>Supplier</span>
-              <span>Pours</span>
-              <span>Pass Rate</span>
-              <span>Avg MPa</span>
-              <span>Trend</span>
+              <span>Supplier</span><span>Pours</span><span>Pass Rate</span><span>Avg MPa</span><span>Trend</span>
             </div>
-            {supplierPerformance.map(s => (
-              <div key={s.supplier} className="qms-sup-row">
-                <span className="font-medium">{s.supplier}</span>
-                <span>{s.pours}</span>
-                <span style={{ color: s.passRate >= 90 ? 'var(--green)' : s.passRate >= 85 ? 'var(--amber)' : 'var(--red)', fontWeight: 600 }}>
-                  {s.passRate}%
-                </span>
-                <span>{s.avgStrength}</span>
-                <div className="qms-mini-bar">
-                  <div className="qms-mini-bar-fill"
-                    style={{
-                      width: `${s.passRate}%`,
-                      background: s.passRate >= 90 ? 'var(--green)' : s.passRate >= 85 ? 'var(--amber)' : 'var(--red)'
-                    }}>
+            {suppliers.map((s) => {
+              const rate = s.pass_rate_pct ?? 0;
+              return (
+                <div key={s.supplier_id} className="qms-sup-row">
+                  <span className="font-medium">{s.supplier_name}</span>
+                  <span>{s.pour_count}</span>
+                  <span style={{ color: passRateColor(rate), fontWeight: 600 }}>
+                    {s.pass_rate_pct != null ? `${s.pass_rate_pct}%` : '—'}
+                  </span>
+                  <span>{s.avg_strength_mpa ?? '—'}</span>
+                  <div className="qms-mini-bar">
+                    <div className="qms-mini-bar-fill" style={{ width: `${rate}%`, background: passRateColor(rate) }} />
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </Card>
-
-        <Card>
-          <h3 className="qms-chart-heading">Tower Progress Completion</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <RadarChart data={towerProgress}>
-              <PolarGrid stroke="var(--gray-200)" />
-              <PolarAngleAxis dataKey="subject" tick={{ fontSize: 12 }} />
-              <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-              <Radar name="Progress" dataKey="A" stroke="var(--blue)" fill="var(--blue)" fillOpacity={0.2} />
-            </RadarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* Charts Row 3 */}
-      <Card>
-        <h3 className="qms-chart-heading">Monthly Cube Volume vs Failures</h3>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={passRateTrend.map((d, i) => ({ ...d, cubes: [120, 98, 145, 112, 167, 203][i], fails: [8, 11, 7, 14, 10, 5][i] }))}>
-            <defs>
-              <linearGradient id="cubeGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="var(--blue)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-            <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-            <Tooltip />
-            <Legend />
-            <Area type="monotone" dataKey="cubes" stroke="var(--blue)" fill="url(#cubeGrad)" strokeWidth={2} name="Cubes tested" />
-            <Area type="monotone" dataKey="fails" stroke="var(--red)" fill="transparent" strokeWidth={2} name="Failures" strokeDasharray="4 2" />
-          </AreaChart>
-        </ResponsiveContainer>
+        )}
       </Card>
     </div>
   );

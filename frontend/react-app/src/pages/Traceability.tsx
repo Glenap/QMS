@@ -1,75 +1,126 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { ChevronRight, Search, CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle, ChevronRight, Clock, Search, XCircle } from 'lucide-react';
+import { useProject } from '../components/layout/ProjectLayout';
+import { traceabilityApi } from '../api/traceability';
+import type { TraceDetail, TraceRecord } from '../types/master';
 import './Traceability.css';
 
-const records = [
-  {
-    id: 'C-047',
-    status: 'pass',
-    pourCard: 'PC-T1-5F-SLB-20240601-001',
-    location: 'T1 · 5F · Slab',
-    grade: 'M40',
-    supplier: 'UltraTech RMC',
-    challan: 'CH-20240601-089',
-    truck: 'KA-05-AB-1234',
-    castDate: '01-Jun-2024',
-    cubeID: 'CUBE-T1-5F-20240601-001',
-    lab: 'ENVTECH',
-    strength: '48.3 MPa',
-    testDate: '29-Jun-2024',
-    ncr: null,
-  },
-  {
-    id: 'C-048',
-    status: 'fail',
-    pourCard: 'PC-T1-5F-SLB-20240601-001',
-    location: 'T1 · 5F · Slab',
-    grade: 'M40',
-    supplier: 'UltraTech RMC',
-    challan: 'CH-20240601-089',
-    truck: 'KA-05-AB-1240',
-    castDate: '01-Jun-2024',
-    cubeID: 'CUBE-T1-5F-20240601-002',
-    lab: 'ENVTECH',
-    strength: '37.2 MPa',
-    testDate: '29-Jun-2024',
-    ncr: 'NCR-2024-015',
-  },
-  {
-    id: 'C-051',
-    status: 'pending',
-    pourCard: 'PC-T3-1F-RAF-20240625-003',
-    location: 'T3 · 1F · Raft',
-    grade: 'M25',
-    supplier: 'UltraTech RMC',
-    challan: 'CH-20240625-102',
-    truck: 'KA-05-AB-1259',
-    castDate: '25-Jun-2024',
-    cubeID: 'CUBE-T3-1F-20240625-001',
-    lab: 'ENVTECH',
-    strength: '—',
-    testDate: 'Due 2-Jul-2024',
-    ncr: null,
-  },
-];
+type BadgeVariant = 'pass' | 'fail' | 'pending';
 
-const statusConfig: Record<string, { label: string; variant: 'pass' | 'fail' | 'pending'; icon: React.ReactNode }> = {
-  pass: { label: 'PASS', variant: 'pass', icon: <CheckCircle size={12} /> },
-  fail: { label: 'FAIL', variant: 'fail', icon: <XCircle size={12} /> },
-  pending: { label: 'PENDING', variant: 'pending', icon: <Clock size={12} /> },
+const RESULT_CFG: Record<string, { variant: BadgeVariant; label: string; icon: React.ReactNode }> = {
+  PASS: { variant: 'pass', label: 'PASS', icon: <CheckCircle size={12} /> },
+  FAIL: { variant: 'fail', label: 'FAIL', icon: <XCircle size={12} /> },
+  CRITICAL_FAILURE: { variant: 'fail', label: 'CRITICAL', icon: <XCircle size={12} /> },
+  PENDING: { variant: 'pending', label: 'PENDING', icon: <Clock size={12} /> },
 };
+const resultCfg = (status: string | null) => RESULT_CFG[status ?? 'PENDING'] ?? RESULT_CFG.PENDING;
+
+const fmtDate = (iso: string | null): string => (iso ? new Date(iso).toLocaleDateString() : '—');
+const titleCase = (s: string): string => s.charAt(0) + s.slice(1).toLowerCase().replace(/_/g, ' ');
+
+const recordLabel = (r: { sample_reference: string | null; sample_id: number }) =>
+  r.sample_reference ?? `Sample #${r.sample_id}`;
+const locationOf = (x: { tower_name: string | null; floor_label: string | null; component_type: string | null }) =>
+  [x.tower_name, x.floor_label, x.component_type].filter(Boolean).join(' · ') || '—';
+
+interface ChainStep {
+  tone: 'done' | 'fail' | 'pending';
+  label: string;
+  value: React.ReactNode;
+  meta?: React.ReactNode;
+  danger?: boolean; // marks the connecting line above as a failure branch
+}
+
+function buildChain(d: TraceDetail): ChainStep[] {
+  const steps: ChainStep[] = [];
+
+  if (d.trucks.length > 0) {
+    steps.push({
+      tone: 'done',
+      label: 'RMC Supply & Challan',
+      value: d.trucks
+        .map((t) => t.challan_number || t.vehicle_number || `Truck ${t.dispatch_token_id}`)
+        .join(', '),
+      meta: `${d.trucks.length} truck${d.trucks.length > 1 ? 's' : ''} · ${d.supplier_name ?? '—'}`,
+    });
+  }
+
+  steps.push({
+    tone: 'done',
+    label: 'Pour Card',
+    value: d.pour_reference ?? `Pour #${d.pour_id}`,
+    meta: [locationOf(d), d.grade_name, d.volume_cum != null ? `${d.volume_cum} m³` : null, titleCase(d.pour_status)]
+      .filter(Boolean)
+      .join(' · '),
+  });
+
+  steps.push({
+    tone: 'done',
+    label: 'Cube Sampling',
+    value: recordLabel(d),
+    meta: [fmtDate(d.cast_date), d.lab_name].filter(Boolean).join(' · '),
+  });
+
+  if (d.tests.length === 0) {
+    steps.push({ tone: 'pending', label: 'Strength Test', value: 'Awaiting result', meta: 'No test recorded yet' });
+  }
+  for (const t of d.tests) {
+    const cfg = resultCfg(t.result_status);
+    steps.push({
+      tone: t.result_status === 'PASS' ? 'done' : t.result_status === 'PENDING' ? 'pending' : 'fail',
+      label: `${t.test_age_days}-Day Test`,
+      value: `${t.observed_strength_mpa} / ${t.required_strength_mpa} MPa`,
+      meta: [fmtDate(t.test_date), cfg.label, t.lab_name].filter(Boolean).join(' · '),
+    });
+    if (t.ncr_number) {
+      steps.push({
+        tone: 'fail',
+        danger: true,
+        label: 'NCR Raised',
+        value: t.ncr_number,
+        meta: 'Non-conformance · see NCR dashboard',
+      });
+    }
+  }
+  return steps;
+}
 
 export const Traceability: React.FC = () => {
-  const [selected, setSelected] = useState<typeof records[0] | null>(records[0]);
-  const [query, setQuery] = useState('');
+  const { project } = useProject();
+  const pid = project.project_id;
 
-  const filtered = records.filter(r =>
-    r.id.toLowerCase().includes(query.toLowerCase()) ||
-    r.location.toLowerCase().includes(query.toLowerCase()) ||
-    r.pourCard.toLowerCase().includes(query.toLowerCase())
-  );
+  const [query, setQuery] = useState('');
+  const [records, setRecords] = useState<TraceRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [detail, setDetail] = useState<TraceDetail | null>(null);
+
+  // Debounced search — empty query returns the project's most recent samples.
+  useEffect(() => {
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      const rows = await traceabilityApi.search(pid, query).catch(() => []);
+      if (cancelled) return;
+      setRecords(rows);
+      setSelectedId((cur) =>
+        cur != null && rows.some((r) => r.sample_id === cur) ? cur : rows[0]?.sample_id ?? null,
+      );
+    }, 250);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [pid, query]);
+
+  useEffect(() => {
+    if (selectedId == null) { setDetail(null); return; }
+    let cancelled = false;
+    (async () => {
+      const d = await traceabilityApi.detail(pid, selectedId).catch(() => null);
+      if (!cancelled) setDetail(d);
+    })();
+    return () => { cancelled = true; };
+  }, [pid, selectedId]);
+
+  const selected = records.find((r) => r.sample_id === selectedId) ?? null;
+  const chain = detail ? buildChain(detail) : [];
 
   return (
     <div className="qms-trace-page">
@@ -78,28 +129,35 @@ export const Traceability: React.FC = () => {
           <Search size={16} className="qms-search-icon" />
           <input
             type="text"
-            placeholder="Search by Cube ID, Pour Card, Location…"
+            placeholder="Search by cube, pour, NCR, challan or vehicle…"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             className="qms-search-input"
           />
         </div>
 
         <div className="qms-trace-list">
-          {filtered.map(r => {
-            const cfg = statusConfig[r.status];
+          {records.length === 0 && (
+            <p className="text-muted" style={{ fontSize: 13, padding: '12px 4px' }}>
+              No records match your search.
+            </p>
+          )}
+          {records.map((r) => {
+            const cfg = resultCfg(r.result_status);
             return (
               <div
-                key={r.id}
-                className={`qms-trace-item ${selected?.id === r.id ? 'qms-trace-item--active' : ''}`}
-                onClick={() => setSelected(r)}
+                key={r.sample_id}
+                className={`qms-trace-item ${selectedId === r.sample_id ? 'qms-trace-item--active' : ''}`}
+                onClick={() => setSelectedId(r.sample_id)}
               >
                 <div className="qms-trace-item-top">
-                  <span className="font-medium">{r.id}</span>
+                  <span className="font-medium">{recordLabel(r)}</span>
                   <Badge variant={cfg.variant} icon={cfg.icon}>{cfg.label}</Badge>
                 </div>
-                <div className="qms-trace-item-sub">{r.location} · {r.grade}</div>
-                <div className="qms-trace-item-sub text-muted">{r.castDate}</div>
+                <div className="qms-trace-item-sub">{locationOf(r)}{r.grade_name ? ` · ${r.grade_name}` : ''}</div>
+                <div className="qms-trace-item-sub text-muted">
+                  {fmtDate(r.cast_date)}{r.ncr_number ? ` · ${r.ncr_number}` : ''}
+                </div>
                 <ChevronRight size={16} className="qms-trace-arrow" />
               </div>
             );
@@ -108,88 +166,34 @@ export const Traceability: React.FC = () => {
       </div>
 
       <div className="qms-trace-right">
-        {selected ? (
+        {selected && detail ? (
           <>
             <div className="qms-trace-detail-header">
               <div>
-                <h2 className="qms-trace-id">{selected.id}</h2>
-                <div className="text-muted" style={{ fontSize: 13 }}>{selected.location} · {selected.grade}</div>
+                <h2 className="qms-trace-id">{recordLabel(detail)}</h2>
+                <div className="text-muted" style={{ fontSize: 13 }}>
+                  {locationOf(detail)}{detail.grade_name ? ` · ${detail.grade_name}` : ''}
+                </div>
               </div>
-              <Badge variant={statusConfig[selected.status].variant} icon={statusConfig[selected.status].icon}>
-                {statusConfig[selected.status].label}
+              <Badge variant={resultCfg(selected.result_status).variant} icon={resultCfg(selected.result_status).icon}>
+                {resultCfg(selected.result_status).label}
               </Badge>
             </div>
 
-            {/* Chain visualization */}
             <div className="qms-chain">
-              <div className="qms-chain-step qms-chain-step--done">
-                <div className="qms-chain-dot"></div>
-                <div className="qms-chain-content">
-                  <div className="qms-chain-label">RMC Order & Challan</div>
-                  <div className="qms-chain-val">{selected.challan}</div>
-                  <div className="qms-chain-meta">Truck: {selected.truck} · Supplier: {selected.supplier}</div>
-                </div>
-              </div>
-              <div className="qms-chain-line"></div>
-
-              <div className="qms-chain-step qms-chain-step--done">
-                <div className="qms-chain-dot"></div>
-                <div className="qms-chain-content">
-                  <div className="qms-chain-label">Gate Scan & Acceptance</div>
-                  <div className="qms-chain-val">Entry recorded at site gate</div>
-                  <div className="qms-chain-meta">Cast Date: {selected.castDate}</div>
-                </div>
-              </div>
-              <div className="qms-chain-line"></div>
-
-              <div className="qms-chain-step qms-chain-step--done">
-                <div className="qms-chain-dot"></div>
-                <div className="qms-chain-content">
-                  <div className="qms-chain-label">Pour Card</div>
-                  <div className="qms-chain-val">{selected.pourCard}</div>
-                  <div className="qms-chain-meta">Pre-pour checklist: Approved</div>
-                </div>
-              </div>
-              <div className="qms-chain-line"></div>
-
-              <div className="qms-chain-step qms-chain-step--done">
-                <div className="qms-chain-dot"></div>
-                <div className="qms-chain-content">
-                  <div className="qms-chain-label">Cube Sampling</div>
-                  <div className="qms-chain-val">{selected.cubeID}</div>
-                  <div className="qms-chain-meta">Dispatched to {selected.lab}</div>
-                </div>
-              </div>
-              <div className="qms-chain-line"></div>
-
-              <div className={`qms-chain-step ${selected.status === 'pending' ? 'qms-chain-step--pending' : selected.status === 'pass' ? 'qms-chain-step--done' : 'qms-chain-step--fail'}`}>
-                <div className="qms-chain-dot"></div>
-                <div className="qms-chain-content">
-                  <div className="qms-chain-label">28-Day Test Result</div>
-                  <div className="qms-chain-val">{selected.strength}</div>
-                  <div className="qms-chain-meta">{selected.testDate} · {selected.lab}</div>
-                </div>
-              </div>
-
-              {selected.ncr && (
-                <>
-                  <div className="qms-chain-line qms-chain-line--danger"></div>
-                  <div className="qms-chain-step qms-chain-step--fail">
-                    <div className="qms-chain-dot"></div>
+              {chain.map((s, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && <div className={`qms-chain-line ${s.danger ? 'qms-chain-line--danger' : ''}`} />}
+                  <div className={`qms-chain-step qms-chain-step--${s.tone}`}>
+                    <div className="qms-chain-dot" />
                     <div className="qms-chain-content">
-                      <div className="qms-chain-label">NCR Raised</div>
-                      <div className="qms-chain-val" style={{ color: 'var(--red)' }}>{selected.ncr}</div>
-                      <div className="qms-chain-meta">High severity · Open · CAPA pending</div>
+                      <div className="qms-chain-label">{s.label}</div>
+                      <div className="qms-chain-val" style={s.danger ? { color: 'var(--red)' } : undefined}>{s.value}</div>
+                      {s.meta && <div className="qms-chain-meta">{s.meta}</div>}
                     </div>
                   </div>
-                </>
-              )}
-            </div>
-
-            <div className="qms-trace-actions">
-              <Button variant="outline" size="sm">View Pour Card</Button>
-              <Button variant="outline" size="sm">View Lab Report</Button>
-              {selected.ncr && <Button variant="danger" size="sm" icon={<AlertTriangle size={14} />}>Open NCR</Button>}
+                </React.Fragment>
+              ))}
             </div>
           </>
         ) : (
