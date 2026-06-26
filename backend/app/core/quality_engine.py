@@ -35,12 +35,19 @@ CRITICAL_FRACTION = 0.85
 def age_fraction(test_age_days: int) -> float:
     """The fraction of 28-day strength expected at ``test_age_days``.
 
-    Known ages come from ``DEFAULT_AGE_FRACTIONS``; an unknown age at or beyond
-    28 days is treated as full strength, and an unknown earlier age falls back
-    to the 7-day fraction (conservative but defined)."""
+    Known ages come from ``DEFAULT_AGE_FRACTIONS``; an unknown age is stepped
+    down to the nearest defined age at or below it (and an age below the
+    smallest defined one uses that smallest fraction). This keeps the required
+    strength **monotonic in age** — a 21-day cube is never held to a lower bar
+    than a 14-day cube — which a flat 7-day fallback got wrong."""
     if test_age_days in DEFAULT_AGE_FRACTIONS:
         return DEFAULT_AGE_FRACTIONS[test_age_days]
-    return 1.0 if test_age_days >= 28 else DEFAULT_AGE_FRACTIONS[7]
+    if test_age_days >= 28:
+        return 1.0
+    defined_at_or_below = [a for a in DEFAULT_AGE_FRACTIONS if a <= test_age_days]
+    if defined_at_or_below:
+        return DEFAULT_AGE_FRACTIONS[max(defined_at_or_below)]
+    return DEFAULT_AGE_FRACTIONS[min(DEFAULT_AGE_FRACTIONS)]
 
 
 def required_strength(

@@ -153,7 +153,10 @@ def decode_token(token: str) -> TokenData | None:
         jti = payload.get("jti")
         token_type = payload.get("type")
 
-        if not all([user_id, role, org_id, jti, token_type]):
+        # user_id / org_id are already valid ints here (int() above would have
+        # raised otherwise) — check the string claims for presence. Don't use a
+        # truthiness test: a legitimate id of 0 would be wrongly rejected.
+        if not role or not jti or not token_type:
             return None
 
         return TokenData(

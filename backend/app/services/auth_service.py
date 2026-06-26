@@ -58,6 +58,12 @@ from app.schemas.auth import (
 logger = logging.getLogger(__name__)
 
 OTP_EXPIRY_MINUTES = 10
+# Wrong-code guesses allowed against a single issued OTP before it is burned —
+# bounds brute-forcing of the 6-digit code within its validity window.
+MAX_OTP_ATTEMPTS = 5
+# Minimum gap between OTP (re)issues for an email — throttles the resend
+# email-bomb vector. A resend inside this window is a silent no-op.
+OTP_RESEND_COOLDOWN_SECONDS = 60
 
 
 async def _try_send_invitation_email(**kwargs) -> None:
@@ -313,6 +319,16 @@ class AuthService:
             raise InvalidOtpError()
 
         if not verify_password(data.code, otp.code_hash):
+            # Count the miss and burn the code once the cap is hit, so the
+            # 6-digit space can't be walked within the validity window. A burned
+            # OTP is no longer "active", so the next attempt needs a fresh resend.
+            otp.attempts += 1
+            if otp.attempts >= MAX_OTP_ATTEMPTS:
+                otp.consumed_at = datetime.now(UTC)
+            # Deliberately commit before raising: this 400 would otherwise let
+            # get_db roll the increment back, and the cap could never accumulate
+            # across attempts. Only the OTP row is dirty here, so this is safe.
+            await self.session.commit()
             raise InvalidOtpError()
 
         await self.repo.mark_otp_consumed(otp.otp_id)
@@ -327,8 +343,19 @@ class AuthService:
         # Only issue for a real, still-inactive, non-offboarded user. Always
         # return the same response so we don't leak which emails exist.
         if user and not user.is_active and not user.is_offboarded:
-            await self._issue_otp(user, purpose="RESEND")
+            if not await self._resend_on_cooldown(data.email):
+                await self._issue_otp(user, purpose="RESEND")
         return OtpChallengeResponse(email=data.email)
+
+    async def _resend_on_cooldown(self, email: str) -> bool:
+        """True if the most recent OTP for this email is younger than the resend
+        cooldown — used to throttle the email-bomb vector without leaking which
+        emails exist (the caller silently no-ops either way)."""
+        latest = await self.repo.get_latest_active_otp(email)
+        if latest is None:
+            return False
+        age = datetime.now(UTC) - latest.created_at
+        return age < timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS)
 
     # ── Me ───────────────────────────────────────────────────────────────────
 

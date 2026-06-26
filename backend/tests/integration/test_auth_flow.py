@@ -1,5 +1,9 @@
 """Integration tests for the client auth flow: register, login, me, refresh, logout."""
 
+from sqlalchemy import func, select
+
+from app.models.auth import EmailOtp
+from tests import mailbox
 from tests.helpers import (
     API,
     DEFAULT_PASSWORD,
@@ -121,6 +125,49 @@ class TestLogin:
             json={"email": "nobody@example.com", "password": DEFAULT_PASSWORD},
         )
         assert resp.status_code == 401
+
+
+class TestOtpHardening:
+    async def test_otp_locks_after_repeated_wrong_codes(self, client):
+        """Brute-force guard: after MAX_OTP_ATTEMPTS misses the code is burned,
+        so even the *correct* code no longer verifies."""
+        await register_client_account(client)
+        email = "client.admin@example.com"
+        code = mailbox.OTP_CODES[email]
+        wrong = "000000" if code != "000000" else "111111"
+
+        for _ in range(5):
+            r = await client.post(
+                f"{API}/auth/verify-otp", json={"email": email, "code": wrong}
+            )
+            assert r.status_code == 400, r.text
+
+        # The OTP is now burned — the real code is rejected and no tokens issue.
+        r = await client.post(
+            f"{API}/auth/verify-otp", json={"email": email, "code": code}
+        )
+        assert r.status_code == 400, r.text
+        assert "access_token" not in r.json()
+
+    async def test_resend_is_throttled_within_cooldown(self, client, db_session):
+        """Email-bomb guard: an immediate resend inside the cooldown issues no
+        new OTP (and still returns the same neutral response)."""
+        await register_client_account(client)
+        email = "client.admin@example.com"
+
+        async def otp_count() -> int:
+            return (
+                await db_session.execute(
+                    select(func.count())
+                    .select_from(EmailOtp)
+                    .where(EmailOtp.email == email)
+                )
+            ).scalar_one()
+
+        before = await otp_count()
+        resp = await client.post(f"{API}/auth/resend-otp", json={"email": email})
+        assert resp.status_code == 200, resp.text
+        assert await otp_count() == before  # cooldown blocked a new issue
 
 
 class TestMe:

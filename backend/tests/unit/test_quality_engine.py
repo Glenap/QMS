@@ -20,6 +20,15 @@ class TestRequiredStrength:
     def test_unknown_age_beyond_28_is_full_strength(self):
         assert quality_engine.required_strength(30, 56) == 30.0
 
+    def test_age_fraction_is_monotonic(self):
+        # A later test age must never require a smaller fraction than an earlier
+        # one (the old flat 7-day fallback made 15–27d require *less* than 14d).
+        fractions = [quality_engine.age_fraction(age) for age in range(1, 40)]
+        assert fractions == sorted(fractions)
+        # Specifically: a 21-day cube is held to the 14-day bar, not the 7-day one.
+        assert quality_engine.age_fraction(21) == quality_engine.age_fraction(14)
+        assert quality_engine.age_fraction(21) > quality_engine.age_fraction(7)
+
 
 class TestClassify:
     @pytest.mark.parametrize(

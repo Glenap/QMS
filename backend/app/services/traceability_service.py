@@ -98,7 +98,11 @@ class TraceabilityService:
             ).scalars().all()
             return list(rows)
 
-        pattern = f"%{term}%"
+        # Escape LIKE metacharacters in the user term so a literal "%" or "_"
+        # matches itself instead of acting as a wildcard (e.g. "M_0" must not
+        # match "M30"). The escape char is declared on each ilike() below.
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
         ids: set[int] = set()
 
         # Sample / pour reference.
@@ -110,8 +114,8 @@ class TraceabilityService:
                     .where(
                         Pour.project_id == pid,
                         or_(
-                            CubeSample.sample_reference.ilike(pattern),
-                            Pour.pour_reference.ilike(pattern),
+                            CubeSample.sample_reference.ilike(pattern, escape="\\"),
+                            Pour.pour_reference.ilike(pattern, escape="\\"),
                         ),
                     )
                     .limit(_SEARCH_LIMIT)
@@ -127,7 +131,7 @@ class TraceabilityService:
                     .join(CubeTest, CubeTest.sample_id == CubeSample.sample_id)
                     .join(NCR, NCR.test_id == CubeTest.test_id)
                     .join(Pour, Pour.pour_id == CubeSample.pour_id)
-                    .where(Pour.project_id == pid, NCR.ncr_number.ilike(pattern))
+                    .where(Pour.project_id == pid, NCR.ncr_number.ilike(pattern, escape="\\"))
                     .limit(_SEARCH_LIMIT)
                 )
             ).scalars().all()
@@ -147,8 +151,8 @@ class TraceabilityService:
                     .where(
                         Pour.project_id == pid,
                         or_(
-                            TruckDispatch.challan_number.ilike(pattern),
-                            TruckDispatch.vehicle_number.ilike(pattern),
+                            TruckDispatch.challan_number.ilike(pattern, escape="\\"),
+                            TruckDispatch.vehicle_number.ilike(pattern, escape="\\"),
                         ),
                     )
                     .limit(_SEARCH_LIMIT)
