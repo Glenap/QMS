@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "UV_LINK_MODE": "copy"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run ruff *)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run alembic *)",
+      "Bash(uv run uvicorn *)",
+      "Bash(npx tsc *)",
+      "Bash(npx eslint *)",
+      "Bash(ollama list *)"
+    ]
+  }
+}

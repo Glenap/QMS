@@ -60,6 +60,10 @@ build/
 # ── Uploaded files (document store — local storage backend) ──
 uploads/
 
+# ── Claude Code: shared config (CLAUDE.md, skills, agents, settings.json) is
+#    committed; personal overrides stay local ──
+.claude/settings.local.json
+
 # ── Project-specific design / reference files ──
 figma promt forms.md
 qms_complete.html
