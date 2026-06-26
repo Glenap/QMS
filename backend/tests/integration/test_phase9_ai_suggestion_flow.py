@@ -247,6 +247,25 @@ class TestApply:
         descriptions = [a["action_description"] for a in ncr["corrective_actions"]]
         assert any("Re-calibrate" in d for d in descriptions)
 
+    async def test_apply_twice_does_not_duplicate_actions(self, client, db_session):
+        _, qe_token, pid, _, new_ncr = await _project_with_corpus(client, db_session)
+        await _gen(client, qe_token, pid, new_ncr)
+        first = (
+            await client.post(
+                f"{API}/projects/{pid}/ncrs/{new_ncr}/ai-suggestion/apply",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        again = (
+            await client.post(
+                f"{API}/projects/{pid}/ncrs/{new_ncr}/ai-suggestion/apply",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        # Re-applying the same suggestion must not append duplicate rows.
+        assert len(first["corrective_actions"]) == 2
+        assert len(again["corrective_actions"]) == 2
+
     async def test_apply_can_skip_corrective_actions(self, client, db_session):
         _, qe_token, pid, _, new_ncr = await _project_with_corpus(client, db_session)
         await _gen(client, qe_token, pid, new_ncr)

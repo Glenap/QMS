@@ -254,8 +254,10 @@ class NCREmbedding(Base):
     )
 
     embedding_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Uniqueness is enforced by the explicit unique index in __table_args__
+    # (mirrors the migration) — no column-level unique= to avoid a duplicate.
     ncr_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quality.ncrs.ncr_id"), nullable=False, unique=True
+        BigInteger, ForeignKey("quality.ncrs.ncr_id"), nullable=False
     )
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     dim: Mapped[int] = mapped_column(Integer, nullable=False)

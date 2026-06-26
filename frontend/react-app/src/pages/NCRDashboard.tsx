@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import {
   AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronRight, Plus, Gavel,
   Sparkles, ShieldAlert, Wand2,
@@ -456,13 +457,18 @@ const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClosed, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Best-effort load of any existing suggestion; a 404 (none yet) is not an error.
+  // Load any existing suggestion. A 404 just means none generated yet; any other
+  // error is real and surfaced rather than silently swallowed.
   useEffect(() => {
     let live = true;
     aiSuggestionsApi
       .get(pid, ncrId)
       .then((s) => { if (live) setSuggestion(s); })
-      .catch(() => { /* none generated yet */ });
+      .catch((err) => {
+        if (!live) return;
+        if (axios.isAxiosError(err) && err.response?.status === 404) return;
+        setError(getApiErrorMessage(err, 'Unable to load the AI suggestion.'));
+      });
     return () => { live = false; };
   }, [pid, ncrId]);
 
@@ -491,8 +497,9 @@ const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClosed, on
     }
   };
 
-  // Nothing to show for non-QE viewers until a suggestion has been generated.
-  if (!isQE && !suggestion) return null;
+  // Nothing to show for non-QE viewers until a suggestion has been generated
+  // (but still surface a load error if one occurred).
+  if (!isQE && !suggestion && !error) return null;
 
   const conf = suggestion?.confidence_level ? CONFIDENCE_BADGE[suggestion.confidence_level] : null;
 

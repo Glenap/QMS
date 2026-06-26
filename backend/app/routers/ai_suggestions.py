@@ -41,10 +41,9 @@ async def get_ai_suggestion(
     ncr_id: int,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
-    llm: LLMClient = Depends(get_llm),
-    embedder: Embedder = Depends(get_embedder),
 ):
-    return await AISuggestionService(db, llm, embedder).get(project, ncr_id)
+    # Read-only — no LLM / embedder needed.
+    return await AISuggestionService(db).get(project, ncr_id)
 
 
 @router.post(
@@ -75,10 +74,7 @@ async def apply_ai_suggestion(
     project: Project = Depends(require_project),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    llm: LLMClient = Depends(get_llm),
-    embedder: Embedder = Depends(get_embedder),
 ):
+    # Applies a stored suggestion — no LLM / embedder needed.
     _ensure_quality_engineer(current_user)
-    return await AISuggestionService(db, llm, embedder).apply(
-        project, ncr_id, data, current_user
-    )
+    return await AISuggestionService(db).apply(project, ncr_id, data, current_user)

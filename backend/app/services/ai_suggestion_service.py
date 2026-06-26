@@ -60,7 +60,14 @@ from app.services.ncr_service import NCRService
 
 
 class AISuggestionService:
-    def __init__(self, session: AsyncSession, llm: LLMClient, embedder: Embedder):
+    def __init__(
+        self,
+        session: AsyncSession,
+        llm: LLMClient | None = None,
+        embedder: Embedder | None = None,
+    ):
+        # llm + embedder are only needed by generate(); the read / apply paths
+        # construct the service without them.
         self.session = session
         self.llm = llm
         self.embedder = embedder
@@ -107,7 +114,16 @@ class AISuggestionService:
             ncr.root_cause = suggestion.root_cause_text
 
         if data.apply_corrective_actions:
+            # Idempotent: skip any suggested action already on the NCR so a
+            # re-apply (e.g. after a regenerate) doesn't duplicate rows.
+            existing = {
+                a.action_description.strip()
+                for a in await self.actions.list_for_ncr(ncr.ncr_id)
+            }
             for desc in self._suggested_actions(suggestion):
+                if desc in existing:
+                    continue
+                existing.add(desc)
                 await self.actions.add(
                     CorrectiveAction(ncr_id=ncr.ncr_id, action_description=desc)
                 )
