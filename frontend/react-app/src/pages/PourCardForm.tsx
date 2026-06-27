@@ -1,44 +1,42 @@
 // Raise a pour card — captures the pour identification, grade, supplier and
 // planned volume, then creates a PLANNED pour (QUALITY_ENGINEER only).
-//
-// Pre-pour checklist, per-truck logging and cube sampling arrive in later
-// phases (dispatch + cube tests) once those models are wired.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { useForm, useWatch } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
+import { ErrorBox } from '../components/ui/ErrorBox';
 import { useAuth } from '../hooks/useAuth';
 import { useProject } from '../components/layout/ProjectLayout';
-import { projectsApi } from '../api/projects';
-import { catalogApi } from '../api/catalog';
-import { suppliersApi } from '../api/suppliers';
-import { floorsApi } from '../api/floors';
-import { poursApi } from '../api/pours';
 import { getApiErrorMessage } from '../api/client';
-import type {
-  ComponentResponse,
-  FloorResponse,
-  GradeResponse,
-  PourCreate,
-  SupplierResponse,
-  TowerResponse,
-} from '../types/master';
-import './PourCardForm.css';
+import { toast } from '../lib/toast';
+import { useProjectTowers, useFloors } from '../queries/floors';
+import { useGrades, useComponents } from '../queries/catalog';
+import { useSuppliers } from '../queries/suppliers';
+import { useCreatePour } from '../queries/pours';
 
 const COMPONENT_LABEL: Record<string, string> = {
   COLUMN: 'Column', SLAB: 'Slab', BEAM: 'Beam', RAFT: 'Raft',
   SHEAR_WALL: 'Shear wall', STAIRCASE: 'Staircase', LIFT_CORE: 'Lift core', FOUNDATION: 'Foundation',
 };
 
-const num = (v: string): number | undefined => {
-  const t = v.trim();
-  if (t === '') return undefined;
-  const n = Number(t);
-  return Number.isNaN(n) ? undefined : n;
-};
+const schema = z.object({
+  tower_id: z.string().min(1, 'Select a tower'),
+  floor_id: z.string().min(1, 'Select a floor'),
+  component_id: z.string().min(1, 'Select a component'),
+  grade_id: z.string().min(1, 'Select a grade'),
+  supplier_horizontal_id: z.string().min(1, 'Select a supplier'),
+  pour_date: z.string().min(1, 'Pick a pour date'),
+  pour_reference: z.string(),
+  volume_cum: z.string(),
+  sub_contractor_name: z.string(),
+});
+type FormValues = z.infer<typeof schema>;
 
 export const PourCardForm: React.FC = () => {
   const { user } = useAuth();
@@ -46,61 +44,26 @@ export const PourCardForm: React.FC = () => {
   const navigate = useNavigate();
   const pid = project.project_id;
 
-  const [towers, setTowers] = useState<TowerResponse[]>([]);
-  const [components, setComponents] = useState<ComponentResponse[]>([]);
-  const [grades, setGrades] = useState<GradeResponse[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
-  const [floors, setFloors] = useState<FloorResponse[]>([]);
+  const { data: towers = [], error: towersError } = useProjectTowers(pid);
+  const { data: components = [] } = useComponents();
+  const { data: grades = [] } = useGrades();
+  const { data: suppliers = [] } = useSuppliers(pid);
+  const createPour = useCreatePour(pid);
 
-  const [towerId, setTowerId] = useState('');
-  const [floorId, setFloorId] = useState('');
-  const [componentId, setComponentId] = useState('');
-  const [gradeId, setGradeId] = useState('');
-  const [supplierId, setSupplierId] = useState('');
-  const [subContractor, setSubContractor] = useState('');
-  const [pourDate, setPourDate] = useState('');
-  const [pourReference, setPourReference] = useState('');
-  const [volume, setVolume] = useState('');
+  const {
+    register, handleSubmit, control, setValue, formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      tower_id: '', floor_id: '', component_id: '', grade_id: '',
+      supplier_horizontal_id: '', pour_date: '', pour_reference: '', volume_cum: '', sub_contractor_name: '',
+    },
+  });
 
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const towerId = useWatch({ control, name: 'tower_id' });
+  const { data: floors = [] } = useFloors(pid, towerId ? Number(towerId) : null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [tw, comp, gr, sup] = await Promise.all([
-          projectsApi.towers(pid),
-          catalogApi.components(),
-          catalogApi.grades(),
-          suppliersApi.list(pid),
-        ]);
-        if (cancelled) return;
-        setTowers(tw); setComponents(comp); setGrades(gr); setSuppliers(sup);
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err, 'Unable to load reference data.'));
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pid]);
-
-  useEffect(() => {
-    if (!towerId) { setFloors([]); setFloorId(''); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const fl = await floorsApi.list(pid, Number(towerId));
-        if (!cancelled) setFloors(fl);
-      } catch {
-        if (!cancelled) setFloors([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pid, towerId]);
-
-  // A contractor only works on their allotted towers — restrict the picker to
-  // those. Clients and whole-project contractors (scope null / "Entire project")
-  // see every tower.
+  // A contractor only works on their allotted towers — restrict the picker.
   const visibleTowers = useMemo(() => {
     const scope = project.assigned_scope;
     if (!scope || scope === 'Entire project') return towers;
@@ -108,54 +71,43 @@ export const PourCardForm: React.FC = () => {
     return towers.filter((t) => allowed.has(t.tower_name));
   }, [towers, project.assigned_scope]);
 
-  // When the contractor is assigned a single tower, the client has effectively
-  // chosen it for them — auto-fill and lock the picker (it's passed on, not a choice).
+  // Single allotted tower → auto-fill and lock (it's passed on, not a choice).
   const towerLocked = visibleTowers.length === 1;
   useEffect(() => {
-    if (!towerId && visibleTowers.length === 1) setTowerId(String(visibleTowers[0].tower_id));
-  }, [visibleTowers, towerId]);
+    if (towerLocked && !towerId) setValue('tower_id', String(visibleTowers[0].tower_id));
+  }, [towerLocked, towerId, visibleTowers, setValue]);
+
+  // Reset the floor whenever the tower changes (floors are tower-scoped).
+  useEffect(() => { setValue('floor_id', ''); }, [towerId, setValue]);
 
   // Pour cards are raised by the Quality Engineer only.
   if (user && user.role !== 'QUALITY_ENGINEER') {
     return <Navigate to={`/app/projects/${pid}`} replace />;
   }
 
-  const canSubmit =
-    towerId !== '' && floorId !== '' && componentId !== '' &&
-    gradeId !== '' && supplierId !== '' && pourDate !== '';
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    const payload: PourCreate = {
-      tower_id: Number(towerId),
-      floor_id: Number(floorId),
-      component_id: Number(componentId),
-      grade_id: Number(gradeId),
-      supplier_horizontal_id: Number(supplierId),
-      pour_date: pourDate,
-      pour_reference: pourReference.trim() || null,
-      volume_cum: num(volume) ?? null,
-      sub_contractor_name: subContractor.trim() || null,
-    };
+  const onSubmit = async (v: FormValues) => {
     try {
-      await poursApi.create(pid, payload);
+      await createPour.mutateAsync({
+        tower_id: Number(v.tower_id),
+        floor_id: Number(v.floor_id),
+        component_id: Number(v.component_id),
+        grade_id: Number(v.grade_id),
+        supplier_horizontal_id: Number(v.supplier_horizontal_id),
+        pour_date: v.pour_date,
+        pour_reference: v.pour_reference.trim() || null,
+        volume_cum: v.volume_cum.trim() ? Number(v.volume_cum) : null,
+        sub_contractor_name: v.sub_contractor_name.trim() || null,
+      });
+      toast.success('Pour card created.');
       navigate(`/app/projects/${pid}/pours`);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to create pour.'));
-    } finally {
-      setSubmitting(false);
+      toast.error(getApiErrorMessage(err, 'Unable to create pour.'));
     }
   };
 
   return (
-    <form className="qms-pour-form" onSubmit={handleSubmit}>
-      {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
-          {error}
-        </div>
-      )}
+    <form className="qms-pour-form" onSubmit={handleSubmit(onSubmit)}>
+      {towersError && <ErrorBox>{getApiErrorMessage(towersError, 'Unable to load reference data.')}</ErrorBox>}
 
       <Card className="qms-form-section">
         <h3 className="qms-section-heading">A · Pour identification</h3>
@@ -163,9 +115,9 @@ export const PourCardForm: React.FC = () => {
           <Select
             label="Tower"
             required
-            value={towerId}
             disabled={towerLocked}
-            onChange={(e) => setTowerId(e.target.value)}
+            error={errors.tower_id?.message}
+            {...register('tower_id')}
             options={
               towerLocked
                 ? visibleTowers.map((t) => ({ label: t.tower_name, value: t.tower_id }))
@@ -175,11 +127,11 @@ export const PourCardForm: React.FC = () => {
                   ]
             }
           />
-          <Select label="Floor" required value={floorId} onChange={(e) => setFloorId(e.target.value)} options={[
+          <Select label="Floor" required error={errors.floor_id?.message} {...register('floor_id')} options={[
             { label: !towerId ? 'Pick a tower first' : floors.length ? 'Select floor…' : 'No floors — add them in Setup › Floors', value: '' },
             ...floors.map((f) => ({ label: f.floor_label, value: f.floor_id })),
           ]} />
-          <Select label="Component type" required value={componentId} onChange={(e) => setComponentId(e.target.value)} options={[
+          <Select label="Component type" required error={errors.component_id?.message} {...register('component_id')} options={[
             { label: 'Select component…', value: '' },
             ...components.map((c) => ({ label: COMPONENT_LABEL[c.component_type] ?? c.component_type, value: c.component_id })),
           ]} />
@@ -189,36 +141,36 @@ export const PourCardForm: React.FC = () => {
       <Card className="qms-form-section">
         <h3 className="qms-section-heading">B · Concrete & supply</h3>
         <div className="qms-grid-3">
-          <Select label="Grade" required value={gradeId} onChange={(e) => setGradeId(e.target.value)} options={[
+          <Select label="Grade" required error={errors.grade_id?.message} {...register('grade_id')} options={[
             { label: 'Select grade…', value: '' },
             ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id })),
           ]} />
-          <Select label="RMC supplier" required value={supplierId} onChange={(e) => setSupplierId(e.target.value)} options={[
+          <Select label="RMC supplier" required error={errors.supplier_horizontal_id?.message} {...register('supplier_horizontal_id')} options={[
             { label: suppliers.length ? 'Select supplier…' : 'No suppliers yet', value: '' },
             ...suppliers.map((s) => ({ label: s.supplier_name, value: s.supplier_id })),
           ]} />
-          <Input label="Sub-contractor" value={subContractor} onChange={(e) => setSubContractor(e.target.value)} placeholder="Optional" />
+          <Input label="Sub-contractor" placeholder="Optional" {...register('sub_contractor_name')} />
         </div>
       </Card>
 
       <Card className="qms-form-section">
         <h3 className="qms-section-heading">C · Pour details</h3>
         <div className="qms-grid-3">
-          <Input label="Pour date" type="date" required value={pourDate} onChange={(e) => setPourDate(e.target.value)} />
-          <Input label="Pour reference" value={pourReference} onChange={(e) => setPourReference(e.target.value)} placeholder="e.g. PC-T1-5F-001" />
-          <Input label="Planned volume (m³)" type="number" step="0.1" value={volume} onChange={(e) => setVolume(e.target.value)} />
+          <Input label="Pour date" type="date" required error={errors.pour_date?.message} {...register('pour_date')} />
+          <Input label="Pour reference" placeholder="e.g. PC-T1-5F-001" {...register('pour_reference')} />
+          <Input label="Planned volume (m³)" type="number" step="0.1" {...register('volume_cum')} />
         </div>
-        <p className="qms-text-sm text-muted" style={{ marginTop: 8 }}>
+        <p className="qms-text-sm text-muted qms-mt-8">
           Pre-pour checklist, per-truck logging and cube sampling are added in later phases.
         </p>
       </Card>
 
       <div className="qms-form-actions">
-        <Button type="button" variant="outline" style={{ flex: 1 }} onClick={() => navigate(`/app/projects/${pid}/pours`)}>
+        <Button type="button" variant="outline" className="qms-flex-1" onClick={() => navigate(`/app/projects/${pid}/pours`)}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" style={{ flex: 2 }} disabled={submitting || !canSubmit}>
-          {submitting ? 'Creating…' : 'Create pour card'}
+        <Button type="submit" variant="primary" className="qms-flex-2" disabled={createPour.isPending}>
+          {createPour.isPending ? 'Creating…' : 'Create pour card'}
         </Button>
       </div>
     </form>

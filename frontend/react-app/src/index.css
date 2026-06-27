@@ -82,6 +82,8 @@ h1, h2, h3, h4, h5, h6 {
 .qms-grid-span-2 { grid-column: span 2; }
 .qms-field-end { display: flex; align-items: flex-end; }
 .qms-nowrap { white-space: nowrap; }
+.qms-flex-1 { flex: 1; }
+.qms-flex-2 { flex: 2; }
 
 .qms-row-between {
   display: flex;
