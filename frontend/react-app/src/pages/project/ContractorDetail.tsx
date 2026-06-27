@@ -1,25 +1,20 @@
 // One contractor's detail: header + Suppliers / Labs tabs (filtered to the
 // suppliers & labs that contractor hired). Suppliers drill into SupplierDetail.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { projectsApi } from '../../api/projects';
-import { suppliersApi } from '../../api/suppliers';
-import { labsApi } from '../../api/labs';
-import { mixDesignsApi } from '../../api/mixDesigns';
 import { getApiErrorMessage } from '../../api/client';
-import type {
-  ConfirmationStatus,
-  ContractorLinkStatus,
-  LabResponse,
-  MixDesignResponse,
-  ProjectContractor,
-  SupplierResponse,
-} from '../../types/master';
+import { useProjectContractors } from '../../queries/contractors';
+import { useSuppliers } from '../../queries/suppliers';
+import { useLabs } from '../../queries/labs';
+import { useMixDesigns } from '../../queries/mixDesigns';
+import type { ConfirmationStatus, ContractorLinkStatus } from '../../types/master';
+import './Detail.css';
 
 const STATUS_BADGE: Record<ContractorLinkStatus, { variant: 'pass' | 'pending' | 'fail'; label: string }> = {
   ACCEPTED: { variant: 'pass', label: 'Accepted' },
@@ -39,13 +34,7 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
   <button
     type="button"
     onClick={onClick}
-    style={{
-      padding: '8px 14px', background: 'none', border: 'none', cursor: 'pointer',
-      font: 'inherit', fontSize: 14, fontWeight: active ? 600 : 500,
-      color: active ? 'var(--blue-700, #1D4ED8)' : 'var(--gray-600)',
-      borderBottom: `2px solid ${active ? 'var(--blue-500, #3B82F6)' : 'transparent'}`,
-      marginBottom: -1,
-    }}
+    className={`qms-detail-tab ${active ? 'qms-detail-tab--active' : ''}`}
   >
     {children}
   </button>
@@ -58,52 +47,28 @@ export const ContractorDetail: React.FC = () => {
   const { contractorOrgId } = useParams();
   const orgId = Number(contractorOrgId);
 
-  const [contractor, setContractor] = useState<ProjectContractor | null>(null);
-  const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
-  const [labs, setLabs] = useState<LabResponse[]>([]);
-  const [mixDesigns, setMixDesigns] = useState<MixDesignResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const contractorsQuery = useProjectContractors(pid);
+  const suppliersQuery = useSuppliers(pid);
+  const labsQuery = useLabs(pid);
+  const mixDesignsQuery = useMixDesigns(pid);
+  const loading = contractorsQuery.isPending || suppliersQuery.isPending || labsQuery.isPending || mixDesignsQuery.isPending;
+  const loadError = contractorsQuery.error ?? suppliersQuery.error ?? labsQuery.error ?? mixDesignsQuery.error;
+
+  const contractor = (contractorsQuery.data ?? []).find((c) => c.contractor_org_id === orgId) ?? null;
+  const suppliers = (suppliersQuery.data ?? []).filter((s) => s.contractor_org_id === orgId);
+  const labs = (labsQuery.data ?? []).filter((l) => l.contractor_org_id === orgId);
+  const mixDesigns = mixDesignsQuery.data ?? [];
+
   const [tab, setTab] = useState<Tab>('suppliers');
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const [pcs, sup, lb, md] = await Promise.all([
-          projectsApi.contractors(pid),
-          suppliersApi.list(pid),
-          labsApi.list(pid),
-          mixDesignsApi.list(pid),
-        ]);
-        if (cancelled) return;
-        setContractor(pcs.find((c) => c.contractor_org_id === orgId) ?? null);
-        setSuppliers(sup.filter((s) => s.contractor_org_id === orgId));
-        setLabs(lb.filter((l) => l.contractor_org_id === orgId));
-        setMixDesigns(md);
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err, 'Unable to load this contractor.'));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pid, orgId]);
-
   const mdCount = (supplierId: number) => mixDesigns.filter((m) => m.supplier_id === supplierId).length;
 
   return (
     <div>
-      <button className="qms-pw-back" onClick={() => navigate(`/app/projects/${pid}/contractors`)}>
+      <button type="button" className="qms-pw-back" onClick={() => navigate(`/app/projects/${pid}/contractors`)}>
         <ChevronLeft size={16} /> Contractors
       </button>
 
-      {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
-          {error}
-        </div>
-      )}
+      {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load this contractor.')}</ErrorBox>}
 
       {loading ? (
         <p className="text-muted qms-text-sm">Loading…</p>
@@ -112,17 +77,17 @@ export const ContractorDetail: React.FC = () => {
       ) : (
         <>
           <Card className="qms-form-section">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <h2 className="qms-pw-title" style={{ margin: 0 }}>{contractor.contractor_org_name}</h2>
+            <div className="qms-detail-title-row">
+              <h2 className="qms-pw-title">{contractor.contractor_org_name}</h2>
               <Badge variant={STATUS_BADGE[contractor.status].variant}>{STATUS_BADGE[contractor.status].label}</Badge>
             </div>
-            <p className="qms-text-sm text-muted" style={{ margin: '8px 0 0' }}>
+            <p className="qms-text-sm text-muted qms-mt-8">
               Scope: {contractor.scope ?? 'Entire project'} · Added {new Date(contractor.assigned_at).toLocaleDateString()}
             </p>
           </Card>
 
           <Card className="qms-form-section" padding="none">
-            <div className="qms-border-b" style={{ display: 'flex', gap: 4, padding: '0 12px' }}>
+            <div className="qms-border-b qms-detail-tabs">
               <TabButton active={tab === 'suppliers'} onClick={() => setTab('suppliers')}>
                 RMC suppliers ({suppliers.length})
               </TabButton>
@@ -142,16 +107,20 @@ export const ContractorDetail: React.FC = () => {
                       <tr><td colSpan={5} className="text-muted">No suppliers hired yet.</td></tr>
                     ) : (
                       suppliers.map((s) => (
-                        <tr
-                          key={s.supplier_id}
-                          onClick={() => navigate(`/app/projects/${pid}/suppliers/${s.supplier_id}`)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          <td className="font-medium">{s.supplier_name}</td>
+                        <tr key={s.supplier_id}>
+                          <td className="font-medium">
+                            <button
+                              type="button"
+                              className="qms-linklike font-medium"
+                              onClick={() => navigate(`/app/projects/${pid}/suppliers/${s.supplier_id}`)}
+                            >
+                              {s.supplier_name}
+                            </button>
+                          </td>
                           <td>{s.plant_name ?? s.plant_location ?? '—'}</td>
                           <td>{mdCount(s.supplier_id)}</td>
                           <td><Badge variant={CONF_VARIANT[s.status]}>{CONF_LABEL[s.status]}</Badge></td>
-                          <td style={{ textAlign: 'right' }}><ChevronRight size={16} className="text-muted" /></td>
+                          <td className="qms-detail-end"><ChevronRight size={16} className="text-muted" /></td>
                         </tr>
                       ))
                     )}

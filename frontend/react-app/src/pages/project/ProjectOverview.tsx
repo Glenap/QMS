@@ -1,38 +1,24 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CheckCircle2, Circle, Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { projectsApi } from '../../api/projects';
-import { suppliersApi } from '../../api/suppliers';
-import { labsApi } from '../../api/labs';
-import { analyticsApi } from '../../api/analytics';
-import type { OverviewKpis } from '../../types/master';
+import { useProjectMembers } from '../../queries/team';
+import { useProjectContractors } from '../../queries/contractors';
+import { useSuppliers } from '../../queries/suppliers';
+import { useLabs } from '../../queries/labs';
+import { useAnalyticsOverview, useAnalyticsQuality } from '../../queries/analytics';
 import '../Dashboard.css';
+import './ProjectOverview.css';
 
-interface Counts {
-  members: number;
-  contractorsAccepted: number;
-  contractorsTotal: number;
-  suppliers: number;
-  labs: number;
-}
-
-interface TrendPoint {
-  name: string;
-  rate: number;
-}
-
-const fmtNum = (n: number | null | undefined): string =>
-  n == null ? '—' : n.toLocaleString();
-const fmtPct = (n: number | null | undefined): string =>
-  n == null ? '—' : `${n}%`;
+const fmtNum = (n: number | null | undefined): string => (n == null ? '—' : n.toLocaleString());
+const fmtPct = (n: number | null | undefined): string => (n == null ? '—' : `${n}%`);
 
 const ChecklistItem: React.FC<{ done: boolean; children: React.ReactNode }> = ({ done, children }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', fontSize: 14 }}>
+  <div className="qms-checklist-item">
     {done ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-muted" />}
-    <span style={{ color: done ? 'var(--gray-800)' : 'var(--gray-500)' }}>{children}</span>
+    <span className={done ? 'qms-checklist-done' : 'text-muted'}>{children}</span>
   </div>
 );
 
@@ -48,90 +34,71 @@ export const ProjectOverview: React.FC = () => {
   const { project } = useProject();
   const navigate = useNavigate();
   const pid = project.project_id;
-  const [counts, setCounts] = useState<Counts | null>(null);
-  const [kpis, setKpis] = useState<OverviewKpis | null>(null);
-  const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const isClient = project.access.side === 'CLIENT';
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [members, contractors, suppliers, labs] = await Promise.all([
-          projectsApi.members(pid),
-          project.access.side === 'CLIENT' ? projectsApi.contractors(pid) : Promise.resolve([]),
-          suppliersApi.list(pid),
-          labsApi.list(pid),
-        ]);
-        if (cancelled) return;
-        setCounts({
-          members: members.length,
-          contractorsTotal: contractors.length,
-          contractorsAccepted: contractors.filter((c) => c.status === 'ACCEPTED').length,
-          suppliers: suppliers.length,
-          labs: labs.length,
-        });
-      } catch {
-        if (!cancelled) setCounts({ members: 0, contractorsTotal: 0, contractorsAccepted: 0, suppliers: 0, labs: 0 });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pid, project.access.side]);
+  const { data: members = [] } = useProjectMembers(pid);
+  const { data: contractors = [] } = useProjectContractors(pid, isClient);
+  const { data: suppliers = [] } = useSuppliers(pid);
+  const { data: labs = [] } = useLabs(pid);
+  const { data: kpis = null } = useAnalyticsOverview(pid);
+  const { data: quality } = useAnalyticsQuality(pid);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [overview, quality] = await Promise.all([
-          analyticsApi.overview(pid),
-          analyticsApi.quality(pid),
-        ]);
-        if (cancelled) return;
-        setKpis(overview);
-        // Overall monthly pass rate = total passes / total tests in each period.
-        const byPeriod = new Map<string, { pass: number; total: number }>();
-        for (const pt of quality.grade_trend) {
-          const acc = byPeriod.get(pt.period) ?? { pass: 0, total: 0 };
-          acc.pass += pt.pass_count;
-          acc.total += pt.test_count;
-          byPeriod.set(pt.period, acc);
-        }
-        setTrend(
-          [...byPeriod.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([period, { pass, total }]) => ({
-              name: period,
-              rate: total ? Math.round((pass / total) * 1000) / 10 : 0,
-            })),
-        );
-      } catch {
-        if (!cancelled) { setKpis(null); setTrend([]); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pid]);
+  const counts = {
+    members: members.length,
+    contractorsTotal: contractors.length,
+    contractorsAccepted: contractors.filter((c) => c.status === 'ACCEPTED').length,
+    suppliers: suppliers.length,
+    labs: labs.length,
+  };
+
+  // Overall monthly pass rate = total passes / total tests in each period.
+  const trend = useMemo(() => {
+    if (!quality) return [];
+    const byPeriod = new Map<string, { pass: number; total: number }>();
+    for (const pt of quality.grade_trend) {
+      const acc = byPeriod.get(pt.period) ?? { pass: 0, total: 0 };
+      acc.pass += pt.pass_count;
+      acc.total += pt.test_count;
+      byPeriod.set(pt.period, acc);
+    }
+    return [...byPeriod.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([period, { pass, total }]) => ({
+        name: period,
+        rate: total ? Math.round((pass / total) * 1000) / 10 : 0,
+      }));
+  }, [quality]);
 
   const quickLinks = [
-    { label: 'Team', icon: <Users size={18} />, to: `/app/projects/${pid}/team`, count: counts?.members },
-    ...(project.access.side === 'CLIENT'
-      ? [{ label: 'Contractors', icon: <Building size={18} />, to: `/app/projects/${pid}/contractors`, count: counts?.contractorsAccepted }]
+    { label: 'Team', icon: <Users size={18} />, to: `/app/projects/${pid}/team`, count: counts.members },
+    ...(isClient
+      ? [{ label: 'Contractors', icon: <Building size={18} />, to: `/app/projects/${pid}/contractors`, count: counts.contractorsAccepted }]
       : []),
-    { label: 'Suppliers', icon: <Truck size={18} />, to: `/app/projects/${pid}/suppliers`, count: counts?.suppliers },
-    { label: 'Labs', icon: <FileText size={18} />, to: `/app/projects/${pid}/labs`, count: counts?.labs },
+    { label: 'Suppliers', icon: <Truck size={18} />, to: `/app/projects/${pid}/suppliers`, count: counts.suppliers },
+    { label: 'Labs', icon: <FileText size={18} />, to: `/app/projects/${pid}/labs`, count: counts.labs },
   ];
 
   return (
     <div className="qms-dashboard">
       <div className="qms-kpi-grid">
         {quickLinks.map((q) => (
-          <Card key={q.label} padding="sm" className="qms-kpi-card" onClick={() => navigate(q.to)} style={{ cursor: 'pointer' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Card
+            key={q.label}
+            padding="sm"
+            className="qms-kpi-card qms-quicklink"
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(q.to)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(q.to); } }}
+          >
+            <div className="qms-quicklink-head">
+              <div className="qms-quicklink-label">
                 <span className="text-muted">{q.icon}</span>
-                <span style={{ fontWeight: 600 }}>{q.label}</span>
+                <span className="qms-quicklink-title">{q.label}</span>
               </div>
               <ChevronRight size={16} className="text-muted" />
             </div>
-            {q.count != null && <div className="qms-kpi-value" style={{ fontSize: 22, marginTop: 4 }}>{q.count}</div>}
+            <div className="qms-kpi-value qms-quicklink-count">{q.count}</div>
           </Card>
         ))}
       </div>
@@ -163,7 +130,7 @@ export const ProjectOverview: React.FC = () => {
             </ResponsiveContainer>
           </div>
           {trend.length === 0 && (
-            <p className="qms-text-sm text-muted" style={{ marginTop: 8 }}>
+            <p className="qms-text-sm text-muted qms-mt-8">
               Live cube-test metrics appear here once tests are recorded for this project.
             </p>
           )}
@@ -171,15 +138,15 @@ export const ProjectOverview: React.FC = () => {
 
         <Card className="qms-chart-card">
           <h3 className="qms-chart-title">Project setup</h3>
-          <div style={{ padding: '4px 2px' }}>
-            <ChecklistItem done={(counts?.members ?? 0) > 0}>Team members assigned ({counts?.members ?? 0})</ChecklistItem>
-            {project.access.side === 'CLIENT' && (
-              <ChecklistItem done={(counts?.contractorsAccepted ?? 0) > 0}>
-                Contractor onboarded ({counts?.contractorsAccepted ?? 0}/{counts?.contractorsTotal ?? 0} accepted)
+          <div className="qms-checklist">
+            <ChecklistItem done={counts.members > 0}>Team members assigned ({counts.members})</ChecklistItem>
+            {isClient && (
+              <ChecklistItem done={counts.contractorsAccepted > 0}>
+                Contractor onboarded ({counts.contractorsAccepted}/{counts.contractorsTotal} accepted)
               </ChecklistItem>
             )}
-            <ChecklistItem done={(counts?.suppliers ?? 0) > 0}>RMC suppliers registered ({counts?.suppliers ?? 0})</ChecklistItem>
-            <ChecklistItem done={(counts?.labs ?? 0) > 0}>Testing labs registered ({counts?.labs ?? 0})</ChecklistItem>
+            <ChecklistItem done={counts.suppliers > 0}>RMC suppliers registered ({counts.suppliers})</ChecklistItem>
+            <ChecklistItem done={counts.labs > 0}>Testing labs registered ({counts.labs})</ChecklistItem>
           </div>
         </Card>
       </div>
