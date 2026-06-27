@@ -76,6 +76,38 @@ h1, h2, h3, h4, h5, h6 {
 .text-success { color: var(--green); }
 .text-warning { color: var(--amber); }
 
+/* Small shared layout utilities */
+.qms-mb-12 { margin-bottom: 12px; }
+.qms-grid-span-2 { grid-column: span 2; }
+
+.qms-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.qms-cell-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Button that looks like an inline link — for keyboard-accessible row navigation */
+.qms-linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--blue);
+  cursor: pointer;
+  text-align: left;
+}
+.qms-linklike:hover { text-decoration: underline; }
+
 /* Screen-reader-only text (visually hidden, still announced) */
 .qms-sr-only {
   position: absolute;

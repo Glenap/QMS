@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { labsApi } from '../../api/labs';
 import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useCreateLab, useLabs, useResendLabConfirmation } from '../../queries/labs';
 import type { ConfirmationStatus, LabCreate, LabResponse, LabType } from '../../types/master';
 
 const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
@@ -26,34 +28,18 @@ export const ProjectLabs: React.FC = () => {
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
 
-  const [rows, setRows] = useState<LabResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows = [], isPending, error: loadError } = useLabs(pid);
+  const createLab = useCreateLab(pid);
+  const resend = useResendLabConfirmation(pid);
+
   const [form, setForm] = useState({ ...EMPTY });
-  const [submitting, setSubmitting] = useState(false);
-  const [resendingId, setResendingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setRows(await labsApi.list(pid));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load labs.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pid]);
-
-  useEffect(() => { void load(); }, [load]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
     const payload: LabCreate = {
       lab_name: form.lab_name.trim(),
       lab_type: form.lab_type,
@@ -64,45 +50,35 @@ export const ProjectLabs: React.FC = () => {
       contact_phone: str(form.contact_phone),
     };
     try {
-      const l = await labsApi.create(pid, payload);
-      setSuccess(
+      const l = await createLab.mutateAsync(payload);
+      toast.success(
         l.contact_email
-          ? `Lab "${l.lab_name}" registered — a confirmation email was sent to ${l.contact_email}.`
+          ? `Lab "${l.lab_name}" registered — confirmation sent to ${l.contact_email}.`
           : `Lab "${l.lab_name}" registered. Add a contact email to send a confirmation request.`,
       );
       setForm({ ...EMPTY });
       setShowForm(false);
-      void load();
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to register lab.'));
-    } finally {
-      setSubmitting(false);
+      toast.error(getApiErrorMessage(err, 'Unable to register lab.'));
     }
   };
 
   const handleResend = async (l: LabResponse) => {
-    setError(null); setSuccess(null); setResendingId(l.lab_id);
     try {
-      await labsApi.resendConfirmation(pid, l.lab_id);
-      setSuccess(`Confirmation re-sent to ${l.contact_email}.`);
-      void load();
+      await resend.mutateAsync(l.lab_id);
+      toast.success(`Confirmation re-sent to ${l.contact_email}.`);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to resend confirmation.'));
-    } finally {
-      setResendingId(null);
+      toast.error(getApiErrorMessage(err, 'Unable to resend confirmation.'));
     }
   };
 
-  const alert: React.CSSProperties = { padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 };
-
   return (
     <div>
-      {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
-      {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
+      {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load labs.')}</ErrorBox>}
 
       {canManage && showForm && (
         <Card className="qms-form-section">
-          <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Register a testing lab</h3>
+          <h3 className="qms-section-heading-plain qms-mb-12">Register a testing lab</h3>
           <form onSubmit={handleSubmit} className="qms-grid-2">
             <Input label="Lab name" required value={form.lab_name} onChange={set('lab_name')} placeholder="e.g. SGS Labs" />
             <Select label="Lab type" value={form.lab_type} onChange={set('lab_type')} options={[
@@ -114,11 +90,11 @@ export const ProjectLabs: React.FC = () => {
             <Input label="State" value={form.state} onChange={set('state')} />
             <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
             <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
-            <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
-              <Button type="submit" variant="primary" disabled={submitting} icon={<Plus size={16} />}>
-                {submitting ? 'Registering…' : 'Register lab'}
+            <div className="qms-form-actions qms-grid-span-2">
+              <Button type="submit" variant="primary" disabled={createLab.isPending} icon={<Plus size={16} />}>
+                {createLab.isPending ? 'Registering…' : 'Register lab'}
               </Button>
-              <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+              <Button type="button" variant="ghost" disabled={createLab.isPending} onClick={() => setShowForm(false)}>
                 Cancel
               </Button>
             </div>
@@ -127,7 +103,7 @@ export const ProjectLabs: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="qms-card-header">
           <h3 className="qms-section-heading-plain">Testing labs</h3>
           {canManage && !showForm && (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
@@ -139,7 +115,7 @@ export const ProjectLabs: React.FC = () => {
           <table className="qms-table">
             <thead><tr><th>Lab</th><th>Hired by</th><th>Type</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>
             <tbody>
-              {loading ? (
+              {isPending ? (
                 <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={6} className="text-muted">No labs yet.</td></tr>
@@ -152,7 +128,7 @@ export const ProjectLabs: React.FC = () => {
                     <td>{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
                     <td>{l.contact_email ?? l.contact_phone ?? '—'}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div className="qms-cell-actions">
                         <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
                         {l.status === 'CONFIRMED' && l.confirmed_at && (
                           <span className="qms-text-sm text-muted">{new Date(l.confirmed_at).toLocaleDateString()}</span>
@@ -162,10 +138,10 @@ export const ProjectLabs: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             icon={<Mail size={13} />}
-                            disabled={resendingId === l.lab_id}
+                            disabled={resend.isPending && resend.variables === l.lab_id}
                             onClick={() => handleResend(l)}
                           >
-                            {resendingId === l.lab_id ? 'Sending…' : 'Resend'}
+                            {resend.isPending && resend.variables === l.lab_id ? 'Sending…' : 'Resend'}
                           </Button>
                         )}
                       </div>

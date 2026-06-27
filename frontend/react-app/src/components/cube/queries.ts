@@ -5,10 +5,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cubeTestsApi } from '../../api/cubeTests';
-import { poursApi } from '../../api/pours';
-import { labsApi } from '../../api/labs';
 import { ncrKeys } from '../ncr/queries';
 import type { CubeSampleCreate, CubeTestCreate } from '../../types/master';
+
+// Shared resource hooks (pours/labs) live in src/queries and are re-exported here
+// for the cast form's dropdowns.
+export { usePours } from '../../queries/pours';
+export { useLabs } from '../../queries/labs';
 
 export const cubeKeys = {
   samples: (pid: number) => ['cube-samples', pid] as const,
@@ -16,13 +19,6 @@ export const cubeKeys = {
 
 export const useCubeSamples = (pid: number) =>
   useQuery({ queryKey: cubeKeys.samples(pid), queryFn: () => cubeTestsApi.listSamples(pid) });
-
-// Shared resources — generic keys so a future pours/labs feature reuses the cache.
-export const usePours = (pid: number) =>
-  useQuery({ queryKey: ['pours', pid], queryFn: () => poursApi.list(pid) });
-
-export const useLabs = (pid: number) =>
-  useQuery({ queryKey: ['labs', pid], queryFn: () => labsApi.list(pid) });
 
 export const useCastSample = (pid: number) => {
   const qc = useQueryClient();

@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { suppliersApi } from '../../api/suppliers';
 import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useCreateSupplier, useResendSupplierConfirmation, useSuppliers } from '../../queries/suppliers';
 import type { ConfirmationStatus, SupplierCreate, SupplierResponse } from '../../types/master';
 
 const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
@@ -33,34 +35,18 @@ export const ProjectSuppliers: React.FC = () => {
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
 
-  const [rows, setRows] = useState<SupplierResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows = [], isPending, error: loadError } = useSuppliers(pid);
+  const createSupplier = useCreateSupplier(pid);
+  const resend = useResendSupplierConfirmation(pid);
+
   const [form, setForm] = useState({ ...EMPTY });
-  const [submitting, setSubmitting] = useState(false);
-  const [resendingId, setResendingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setRows(await suppliersApi.list(pid));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load suppliers.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pid]);
-
-  useEffect(() => { void load(); }, [load]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
     const payload: SupplierCreate = {
       supplier_name: form.supplier_name.trim(),
       plant_name: str(form.plant_name),
@@ -71,45 +57,35 @@ export const ProjectSuppliers: React.FC = () => {
       contact_phone: str(form.contact_phone),
     };
     try {
-      const s = await suppliersApi.create(pid, payload);
-      setSuccess(
+      const s = await createSupplier.mutateAsync(payload);
+      toast.success(
         s.contact_email
-          ? `Supplier "${s.supplier_name}" registered — a confirmation email was sent to ${s.contact_email}.`
+          ? `Supplier "${s.supplier_name}" registered — confirmation sent to ${s.contact_email}.`
           : `Supplier "${s.supplier_name}" registered. Add a contact email to send a confirmation request.`,
       );
       setForm({ ...EMPTY });
       setShowForm(false);
-      void load();
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to register supplier.'));
-    } finally {
-      setSubmitting(false);
+      toast.error(getApiErrorMessage(err, 'Unable to register supplier.'));
     }
   };
 
   const handleResend = async (s: SupplierResponse) => {
-    setError(null); setSuccess(null); setResendingId(s.supplier_id);
     try {
-      await suppliersApi.resendConfirmation(pid, s.supplier_id);
-      setSuccess(`Confirmation re-sent to ${s.contact_email}.`);
-      void load();
+      await resend.mutateAsync(s.supplier_id);
+      toast.success(`Confirmation re-sent to ${s.contact_email}.`);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to resend confirmation.'));
-    } finally {
-      setResendingId(null);
+      toast.error(getApiErrorMessage(err, 'Unable to resend confirmation.'));
     }
   };
 
-  const alert: React.CSSProperties = { padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 };
-
   return (
     <div>
-      {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
-      {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
+      {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load suppliers.')}</ErrorBox>}
 
       {canManage && showForm && (
         <Card className="qms-form-section">
-          <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Register an RMC supplier</h3>
+          <h3 className="qms-section-heading-plain qms-mb-12">Register an RMC supplier</h3>
           <form onSubmit={handleSubmit} className="qms-grid-2">
             <Input label="Supplier company name" required value={form.supplier_name} onChange={set('supplier_name')} placeholder="e.g. UltraTech RMC" />
             <Input label="Plant name" value={form.plant_name} onChange={set('plant_name')} />
@@ -118,11 +94,11 @@ export const ProjectSuppliers: React.FC = () => {
             <Input label="Distance from site (km)" type="number" value={form.plant_distance_km} onChange={set('plant_distance_km')} />
             <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
             <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
-            <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
-              <Button type="submit" variant="primary" disabled={submitting} icon={<Plus size={16} />}>
-                {submitting ? 'Registering…' : 'Register supplier'}
+            <div className="qms-form-actions qms-grid-span-2">
+              <Button type="submit" variant="primary" disabled={createSupplier.isPending} icon={<Plus size={16} />}>
+                {createSupplier.isPending ? 'Registering…' : 'Register supplier'}
               </Button>
-              <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+              <Button type="button" variant="ghost" disabled={createSupplier.isPending} onClick={() => setShowForm(false)}>
                 Cancel
               </Button>
             </div>
@@ -131,7 +107,7 @@ export const ProjectSuppliers: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="qms-card-header">
           <h3 className="qms-section-heading-plain">Suppliers</h3>
           {canManage && !showForm && (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
@@ -143,24 +119,28 @@ export const ProjectSuppliers: React.FC = () => {
           <table className="qms-table">
             <thead><tr><th>Supplier</th><th>Hired by</th><th>Plant</th><th>Distance</th><th>Contact</th><th>Confirmation</th></tr></thead>
             <tbody>
-              {loading ? (
+              {isPending ? (
                 <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={6} className="text-muted">No suppliers yet.</td></tr>
               ) : (
                 rows.map((s) => (
-                  <tr
-                    key={s.supplier_id}
-                    onClick={() => navigate(`/app/projects/${pid}/suppliers/${s.supplier_id}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td className="font-medium">{s.supplier_name}</td>
+                  <tr key={s.supplier_id}>
+                    <td className="font-medium">
+                      <button
+                        type="button"
+                        className="qms-linklike font-medium"
+                        onClick={() => navigate(`/app/projects/${pid}/suppliers/${s.supplier_id}`)}
+                      >
+                        {s.supplier_name}
+                      </button>
+                    </td>
                     <td>{s.contractor_org_name ?? '—'}</td>
                     <td>{s.plant_name ?? s.plant_location ?? '—'}</td>
                     <td>{s.plant_distance_km != null ? `${s.plant_distance_km} km` : '—'}</td>
                     <td>{s.contact_email ?? s.contact_phone ?? '—'}</td>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div className="qms-cell-actions">
                         <Badge variant={CONF_VARIANT[s.status]}>{CONF_LABEL[s.status]}</Badge>
                         {s.status === 'CONFIRMED' && s.confirmed_at && (
                           <span className="qms-text-sm text-muted">{new Date(s.confirmed_at).toLocaleDateString()}</span>
@@ -170,10 +150,10 @@ export const ProjectSuppliers: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             icon={<Mail size={13} />}
-                            disabled={resendingId === s.supplier_id}
-                            onClick={(e) => { e.stopPropagation(); void handleResend(s); }}
+                            disabled={resend.isPending && resend.variables === s.supplier_id}
+                            onClick={() => handleResend(s)}
                           >
-                            {resendingId === s.supplier_id ? 'Sending…' : 'Resend'}
+                            {resend.isPending && resend.variables === s.supplier_id ? 'Sending…' : 'Resend'}
                           </Button>
                         )}
                       </div>
