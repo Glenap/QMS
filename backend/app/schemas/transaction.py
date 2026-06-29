@@ -56,6 +56,10 @@ class PourResponse(BaseModel):
     volume_actual_cum: float | None
     completion_notes: str | None
     completed_at: datetime | None
+    # Dispatch rollups: concrete delivered so far (accepted trucks) and the
+    # volume still to order against the planned volume (drives the next dispatch).
+    volume_delivered_cum: float | None = None
+    volume_remaining_cum: float | None = None
     created_at: datetime
 
 

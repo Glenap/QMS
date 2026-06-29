@@ -281,3 +281,88 @@ class TestGate:
             f"{API}/projects/{pid}/gate/{token}", headers=bearer(qe_token)
         )
         assert resp.status_code == 403
+
+
+async def _pour_view(client, qe_token, pid, pour_id):
+    return (
+        await client.get(f"{API}/projects/{pid}/pours/{pour_id}", headers=bearer(qe_token))
+    ).json()
+
+
+async def _deliver(client, qe_token, sup_token, pid, refs, *, ordered, delivered):
+    """Order a truck, fill it, scan it in and accept it at the gate."""
+    created = (
+        await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=ordered)
+    ).json()
+    token = created["truck"]["token"]
+    await _fill_truck(client, token, volume_cum=delivered)
+    await client.post(
+        f"{API}/projects/{pid}/gate/{token}/arrive", json={}, headers=bearer(sup_token)
+    )
+    await client.post(
+        f"{API}/projects/{pid}/gate/{token}/accept", headers=bearer(sup_token)
+    )
+    return token
+
+
+class TestPourVolumeFlow:
+    """Pour↔dispatch volume rollup: remaining auto-fills the next order, full
+    delivery auto-completes the pour, a short/rejected delivery leaves it open."""
+
+    async def test_remaining_reflects_outstanding_orders(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # pour = 30 m³
+        # Order 20 (truck still PENDING) → 10 left to order, nothing delivered yet.
+        await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=20.0)
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["volume_remaining_cum"] == 10.0
+        assert pour["volume_delivered_cum"] == 0.0
+        assert pour["status"] == "PLANNED"
+
+    async def test_full_delivery_auto_completes_pour(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        await _deliver(client, qe_token, sup_token, pid, refs, ordered=30.0, delivered=30.0)
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "COMPLETED"
+        assert pour["completed_at"] is not None
+        assert pour["volume_delivered_cum"] == 30.0
+        assert pour["volume_actual_cum"] == 30.0
+        assert pour["volume_remaining_cum"] == 0.0
+
+    async def test_short_delivery_leaves_pour_open_with_remaining(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        # Ordered 30 but only 20 made it (slump short on one truck).
+        await _deliver(client, qe_token, sup_token, pid, refs, ordered=30.0, delivered=20.0)
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "IN_PROGRESS"
+        assert pour["volume_delivered_cum"] == 20.0
+        # The 10 m³ shortfall is free to re-order.
+        assert pour["volume_remaining_cum"] == 10.0
+
+    async def test_rejected_delivery_frees_the_volume(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        created = (
+            await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=30.0)
+        ).json()
+        token = created["truck"]["token"]
+        await _fill_truck(client, token, volume_cum=30.0)
+        await client.post(
+            f"{API}/projects/{pid}/gate/{token}/reject",
+            json={"rejection_reason": "Slump out of range at the gate"},
+            headers=bearer(sup_token),
+        )
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "PLANNED"
+        assert pour["volume_delivered_cum"] == 0.0
+        assert pour["volume_remaining_cum"] == 30.0

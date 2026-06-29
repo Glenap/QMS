@@ -26,6 +26,7 @@ from app.models.master import Grade, Project, Supplier
 from app.models.transaction import (
     Pour,
     PourDispatchLink,
+    PourStatus,
     RMCDispatch,
     TruckDispatch,
     TruckStatus,
@@ -256,6 +257,7 @@ class DispatchService:
         dispatch.is_complete = received >= ordered
         await self.session.flush()
 
+        await self._apply_pour_progress(dispatch.dispatch_id)
         await self._notify_result(project, dispatch, truck, "ACCEPTED")
         return await self._gate_view(project, dispatch, truck)
 
@@ -275,6 +277,27 @@ class DispatchService:
         return await self._gate_view(project, dispatch, truck)
 
     # ── Internals ───────────────────────────────────────────────────────────
+
+    async def _apply_pour_progress(self, dispatch_id: int) -> None:
+        """Roll the just-accepted delivery up to its pour: mark it IN_PROGRESS on
+        the first delivery and auto-COMPLETE once the planned volume is delivered.
+        A short delivery (e.g. a slump rejection) leaves the pour open for the QE."""
+        pour_id = await self.repo.pour_id_for(dispatch_id)
+        if pour_id is None:
+            return
+        pour = await self.session.get(Pour, pour_id)
+        if not pour or pour.status == PourStatus.COMPLETED:
+            return
+
+        delivered = await self.repo.delivered_for_pour(pour_id)
+        planned = float(pour.volume_cum) if pour.volume_cum is not None else None
+        if planned is not None and delivered + 0.01 >= planned:
+            pour.status = PourStatus.COMPLETED
+            pour.completed_at = datetime.now(UTC)
+            pour.volume_actual_cum = delivered
+        elif pour.status == PourStatus.PLANNED:
+            pour.status = PourStatus.IN_PROGRESS
+        await self.session.flush()
 
     @staticmethod
     def _expired(truck: TruckDispatch) -> bool:

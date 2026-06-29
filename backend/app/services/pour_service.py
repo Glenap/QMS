@@ -29,6 +29,7 @@ from app.models.master import (
     Tower,
 )
 from app.models.transaction import Pour, PourStatus
+from app.repositories.dispatch_repo import DispatchRepository
 from app.repositories.pour_repo import PourRepository
 from app.schemas.transaction import PourComplete, PourCreate, PourResponse
 
@@ -37,6 +38,7 @@ class PourService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = PourRepository(session)
+        self.dispatch = DispatchRepository(session)
 
     async def create(
         self, data: PourCreate, project: Project, user: User
@@ -126,13 +128,23 @@ class PourService:
             Pour.project_id == project.project_id,
             order_by=Pour.pour_date.desc(),
         )
-        return [await self._to_response(p) for p in pours]
+        ids = [p.pour_id for p in pours]
+        delivered = await self.dispatch.delivered_for_pours(ids)
+        outstanding = await self.dispatch.outstanding_ordered_for_pours(ids)
+        return [
+            await self._to_response(
+                p,
+                delivered=delivered.get(p.pour_id, 0.0),
+                outstanding=outstanding.get(p.pour_id, 0.0),
+            )
+            for p in pours
+        ]
 
     async def get(self, project: Project, pour_id: int) -> PourResponse:
         pour = await self.repo.get_in_project(pour_id, project.project_id)
         if not pour:
             raise NotFoundError("Pour")
-        return await self._to_response(pour)
+        return await self._to_response(pour, **await self._rollup(pour.pour_id))
 
     async def complete(
         self, project: Project, pour_id: int, data: PourComplete
@@ -151,9 +163,23 @@ class PourService:
             pour.completion_notes = data.completion_notes
         await self.session.flush()
         await self.session.refresh(pour)
-        return await self._to_response(pour)
+        return await self._to_response(pour, **await self._rollup(pour.pour_id))
 
-    async def _to_response(self, pour: Pour) -> PourResponse:
+    async def _rollup(self, pour_id: int) -> dict[str, float]:
+        """delivered + outstanding-ordered for a single pour, as _to_response kwargs."""
+        delivered = await self.dispatch.delivered_for_pour(pour_id)
+        outstanding = (
+            await self.dispatch.outstanding_ordered_for_pours([pour_id])
+        ).get(pour_id, 0.0)
+        return {"delivered": delivered, "outstanding": outstanding}
+
+    async def _to_response(
+        self,
+        pour: Pour,
+        *,
+        delivered: float = 0.0,
+        outstanding: float = 0.0,
+    ) -> PourResponse:
         # session.get hits the identity map, so repeated lookups across a list
         # don't re-query the same tower/grade/etc.
         tower = await self.session.get(Tower, pour.tower_id)
@@ -182,5 +208,11 @@ class PourService:
             volume_actual_cum=pour.volume_actual_cum,
             completion_notes=pour.completion_notes,
             completed_at=pour.completed_at,
+            volume_delivered_cum=delivered,
+            volume_remaining_cum=(
+                max(float(pour.volume_cum) - delivered - outstanding, 0.0)
+                if pour.volume_cum is not None
+                else None
+            ),
             created_at=pour.created_at,
         )
