@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Send, Copy, Check } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -47,6 +47,14 @@ export const ProjectDispatches: React.FC = () => {
     () => pours.find((p) => p.pour_id === Number(pourId)) ?? null,
     [pours, pourId],
   );
+
+  // Auto-fill the order with the pour's remaining volume (planned − delivered −
+  // outstanding) so the QE just confirms it. They can still override.
+  useEffect(() => {
+    if (selectedPour?.volume_remaining_cum != null) {
+      setVolume(String(selectedPour.volume_remaining_cum));
+    }
+  }, [selectedPour]);
 
   const canSubmit = selectedPour !== null && volume.trim() !== '' && Number(volume) > 0;
 
@@ -126,7 +134,7 @@ export const ProjectDispatches: React.FC = () => {
                 disabled
               />
               <Input
-                label="Volume ordered (m³)"
+                label={`Volume ordered (m³)${selectedPour?.volume_remaining_cum != null ? ` · ${selectedPour.volume_remaining_cum} left on this pour` : ''}`}
                 type="number"
                 step="0.5"
                 min="0"

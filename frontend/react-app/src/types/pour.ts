@@ -42,5 +42,7 @@ export interface PourResponse {
   volume_actual_cum: number | null;
   completion_notes: string | null;
   completed_at: string | null;
+  volume_delivered_cum: number | null;
+  volume_remaining_cum: number | null;
   created_at: string;
 }

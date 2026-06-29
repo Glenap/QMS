@@ -75,7 +75,19 @@ export const ProjectPours: React.FC = () => {
                     <td>{p.grade_name ?? '—'}</td>
                     <td>{p.supplier_name ?? '—'}</td>
                     <td>{fmtDate(p.pour_date)}</td>
-                    <td>{p.volume_cum != null ? `${p.volume_cum} m³` : '—'}</td>
+                    <td>
+                      {p.volume_cum != null ? (
+                        <>
+                          {(p.volume_delivered_cum ?? 0) > 0 && (
+                            <span className="font-medium">{p.volume_delivered_cum} / </span>
+                          )}
+                          {p.volume_cum} m³
+                          {p.status !== 'COMPLETED' && (p.volume_remaining_cum ?? 0) > 0 && (p.volume_delivered_cum ?? 0) > 0 && (
+                            <span className="qms-text-sm text-muted"> · {p.volume_remaining_cum} left</span>
+                          )}
+                        </>
+                      ) : '—'}
+                    </td>
                     <td><Badge variant={STATUS_VARIANT[p.status]}>{STATUS_LABEL[p.status]}</Badge></td>
                     {isQE && (
                       <td>
