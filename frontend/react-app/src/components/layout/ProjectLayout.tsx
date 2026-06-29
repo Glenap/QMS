@@ -4,10 +4,11 @@
 // Sidebar.
 
 import React from 'react';
-import { Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { Link, Outlet, useMatch, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { ErrorBox } from '../ui/ErrorBox';
+import { ChatWidget } from '../chat/ChatWidget';
 import { getApiErrorMessage } from '../../api/client';
 import { useProjectDetail } from '../../queries/projects';
 import type { ProjectDetail } from '../../types/master';
@@ -39,6 +40,9 @@ export const ProjectLayout: React.FC = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const id = Number(projectId);
+  // The full Chatbot page already hosts the analyst — don't also float the widget
+  // there (it would be a second conversation on the same project).
+  const onChatbotPage = useMatch('/app/projects/:projectId/chatbot') != null;
 
   const { data: project, isPending, error, refetch } = useProjectDetail(id);
 
@@ -61,7 +65,9 @@ export const ProjectLayout: React.FC = () => {
       <div className="qms-pw">
         <div className="qms-pw-header">
           <div>
-            <h1 className="qms-pw-title">{project.project_name}</h1>
+            <Link to={`/app/projects/${id}`} className="qms-pw-title-link" title="Go to project dashboard">
+              <h1 className="qms-pw-title">{project.project_name}</h1>
+            </Link>
             <div className="qms-pw-sub">
               {project.project_code ? `${project.project_code} · ` : ''}
               {[project.city, project.state].filter(Boolean).join(', ') || 'No location set'}
@@ -74,6 +80,7 @@ export const ProjectLayout: React.FC = () => {
 
         <Outlet context={{ project, reload: () => { void refetch(); } } satisfies ProjectCtx} />
       </div>
+      {!onChatbotPage && <ChatWidget project={project} />}
     </div>
   );
 };

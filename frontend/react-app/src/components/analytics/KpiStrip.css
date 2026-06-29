@@ -1,0 +1,29 @@
+.qms-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--gray-200);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.qms-kpi-strip-cell {
+  background: #fff;
+  padding: 16px 20px;
+  text-align: center;
+}
+
+.qms-kpi-strip-val {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--gray-900);
+  line-height: 1.1;
+}
+
+.qms-kpi-strip-label {
+  font-size: 11px;
+  color: var(--gray-500);
+  margin-top: 6px;
+}

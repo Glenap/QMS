@@ -1,34 +1,25 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { CheckCircle2, Circle, Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
+import {
+  Bar, BarChart, CartesianGrid, Legend,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
+import { Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
+import { KpiStrip } from '../../components/analytics/KpiStrip';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { useProjectMembers } from '../../queries/team';
 import { useProjectContractors } from '../../queries/contractors';
 import { useSuppliers } from '../../queries/suppliers';
 import { useLabs } from '../../queries/labs';
-import { useAnalyticsOverview, useAnalyticsQuality } from '../../queries/analytics';
+import {
+  useAnalyticsOverview, useSupplierScores, useNcrsBySupplier,
+} from '../../queries/analytics';
 import '../Dashboard.css';
 import './ProjectOverview.css';
 
 const fmtNum = (n: number | null | undefined): string => (n == null ? '—' : n.toLocaleString());
 const fmtPct = (n: number | null | undefined): string => (n == null ? '—' : `${n}%`);
-
-const ChecklistItem: React.FC<{ done: boolean; children: React.ReactNode }> = ({ done, children }) => (
-  <div className="qms-checklist-item">
-    {done ? <CheckCircle2 size={18} className="text-success" /> : <Circle size={18} className="text-muted" />}
-    <span className={done ? 'qms-checklist-done' : 'text-muted'}>{children}</span>
-  </div>
-);
-
-const Kpi: React.FC<{ label: string; value: string; note?: string }> = ({ label, value, note }) => (
-  <Card padding="sm" className="qms-kpi-card">
-    <div className="qms-kpi-label">{label}</div>
-    <div className="qms-kpi-value">{value}</div>
-    {note && <div className="qms-kpi-delta qms-kpi-delta--warn">{note}</div>}
-  </Card>
-);
 
 export const ProjectOverview: React.FC = () => {
   const { project } = useProject();
@@ -41,33 +32,56 @@ export const ProjectOverview: React.FC = () => {
   const { data: suppliers = [] } = useSuppliers(pid);
   const { data: labs = [] } = useLabs(pid);
   const { data: kpis = null } = useAnalyticsOverview(pid);
-  const { data: quality } = useAnalyticsQuality(pid);
+  const { data: supplierScores = [] } = useSupplierScores(pid);
+  const { data: ncrBySupplier = [] } = useNcrsBySupplier(pid);
 
   const counts = {
     members: members.length,
-    contractorsTotal: contractors.length,
     contractorsAccepted: contractors.filter((c) => c.status === 'ACCEPTED').length,
     suppliers: suppliers.length,
     labs: labs.length,
   };
 
-  // Overall monthly pass rate = total passes / total tests in each period.
-  const trend = useMemo(() => {
-    if (!quality) return [];
-    const byPeriod = new Map<string, { pass: number; total: number }>();
-    for (const pt of quality.grade_trend) {
-      const acc = byPeriod.get(pt.period) ?? { pass: 0, total: 0 };
-      acc.pass += pt.pass_count;
-      acc.total += pt.test_count;
-      byPeriod.set(pt.period, acc);
-    }
-    return [...byPeriod.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([period, { pass, total }]) => ({
-        name: period,
-        rate: total ? Math.round((pass / total) * 1000) / 10 : 0,
-      }));
-  }, [quality]);
+  // Pass rate per RMC supplier (only those with tests), best first. The overall
+  // whole-project pass rate lives in the KPI strip; the month-by-month trend is
+  // a filterable view that belongs on the Analytics page, not here.
+  const supplierPass = useMemo(
+    () =>
+      supplierScores
+        .filter((s) => s.test_count > 0)
+        .map((s) => ({ name: s.supplier_name, rate: s.pass_rate_pct ?? 0 }))
+        .sort((a, b) => b.rate - a.rate),
+    [supplierScores],
+  );
+
+  // NCRs by supplier (open / closed / critical), worst first. Whole-project —
+  // the dashboard is never filtered.
+  const ncrChart = useMemo(
+    () =>
+      ncrBySupplier
+        .filter((s) => s.total > 0)
+        .map((s) => ({
+          name: s.supplier_name,
+          Open: s.open_count,
+          Closed: s.closed_count,
+          Critical: s.critical_count,
+        }))
+        .sort((a, b) => (b.Open + b.Closed) - (a.Open + a.Closed)),
+    [ncrBySupplier],
+  );
+
+  // The overall-data KPI strip (whole project). The Analytics page shows the
+  // same strip, but filtered by tower / grade / date.
+  const failures = kpis ? kpis.fail_count + kpis.critical_count : null;
+  const kpiItems = [
+    { label: 'Total Pours', value: fmtNum(kpis?.pour_count) },
+    { label: 'Overall Pass Rate', value: fmtPct(kpis?.pass_rate_pct), color: 'var(--green)' },
+    { label: 'Avg. Strength', value: kpis?.avg_strength_mpa != null ? `${kpis.avg_strength_mpa} MPa` : '—' },
+    { label: 'Total Failures', value: failures != null ? String(failures) : '—', color: 'var(--red)' },
+    { label: 'Critical Failures', value: kpis ? String(kpis.critical_count) : '—', color: 'var(--amber)' },
+    // "Open" = not yet closed (open + under review), matching the Analytics strip.
+    { label: 'Open NCRs', value: kpis ? String(kpis.ncr_open + kpis.ncr_under_review) : '—' },
+  ];
 
   const quickLinks = [
     { label: 'Team', icon: <Users size={18} />, to: `/app/projects/${pid}/team`, count: counts.members },
@@ -103,51 +117,50 @@ export const ProjectOverview: React.FC = () => {
         ))}
       </div>
 
-      <div className="qms-kpi-grid">
-        <Kpi label="Total pours" value={fmtNum(kpis?.pour_count)} note={kpis ? `${fmtNum(kpis.pour_volume_cum)} m³ poured` : undefined} />
-        <Kpi label="Pass rate" value={fmtPct(kpis?.pass_rate_pct)} note={kpis ? `${fmtNum(kpis.test_count)} tests` : undefined} />
-        <Kpi label="Open NCRs" value={fmtNum(kpis?.ncr_open)} note={kpis ? `${fmtNum(kpis.critical_count)} critical` : undefined} />
-        <Kpi label="Avg strength" value={kpis?.avg_strength_mpa != null ? `${kpis.avg_strength_mpa} MPa` : '—'} note={kpis ? `${fmtPct(kpis.acceptance_pct)} truck accept` : undefined} />
-      </div>
+      <KpiStrip items={kpiItems} />
 
       <div className="qms-dashboard-charts">
         <Card className="qms-chart-card">
-          <h3 className="qms-chart-title">Monthly pass rate</h3>
+          <h3 className="qms-chart-title">Pass rate by RMC supplier</h3>
           <div className="qms-chart-container">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trend}>
-                <defs>
-                  <linearGradient id="pr" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--green)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="var(--green)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <BarChart data={supplierPass}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--gray-500)' }} axisLine={false} tickLine={false} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: 'var(--gray-500)' }} axisLine={false} tickLine={false} />
                 <Tooltip />
-                <Area type="monotone" dataKey="rate" stroke="var(--green)" strokeWidth={2} fillOpacity={1} fill="url(#pr)" />
-              </AreaChart>
+                <Bar dataKey="rate" name="Pass rate %" fill="var(--blue)" radius={[4, 4, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </div>
-          {trend.length === 0 && (
+          {supplierPass.length === 0 && (
             <p className="qms-text-sm text-muted qms-mt-8">
-              Live cube-test metrics appear here once tests are recorded for this project.
+              Supplier pass rates appear once cube tests are recorded for this project.
             </p>
           )}
         </Card>
 
         <Card className="qms-chart-card">
-          <h3 className="qms-chart-title">Project setup</h3>
-          <div className="qms-checklist">
-            <ChecklistItem done={counts.members > 0}>Team members assigned ({counts.members})</ChecklistItem>
-            {isClient && (
-              <ChecklistItem done={counts.contractorsAccepted > 0}>
-                Contractor onboarded ({counts.contractorsAccepted}/{counts.contractorsTotal} accepted)
-              </ChecklistItem>
-            )}
-            <ChecklistItem done={counts.suppliers > 0}>RMC suppliers registered ({counts.suppliers})</ChecklistItem>
-            <ChecklistItem done={counts.labs > 0}>Testing labs registered ({counts.labs})</ChecklistItem>
+          <h3 className="qms-chart-title">NCRs by RMC supplier (open · closed · critical)</h3>
+          <div className="qms-chart-container">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={ncrChart}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--gray-500)' }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--gray-500)' }} axisLine={false} tickLine={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="Open" name="Open" fill="var(--amber)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Closed" name="Closed" fill="var(--green)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Critical" name="Critical" fill="var(--red)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
+          {ncrChart.length === 0 && (
+            <p className="qms-text-sm text-muted qms-mt-8">
+              No NCRs raised yet — no supplier has a failed cube test.
+            </p>
+          )}
         </Card>
       </div>
     </div>

@@ -39,6 +39,7 @@ from app.schemas.analytics import (
     QualityAnalytics,
     ResultBreakdown,
     StrengthBucket,
+    SupplierNcrCount,
     SupplierScore,
 )
 
@@ -83,17 +84,19 @@ class AnalyticsService:
         supplier_id: int | None = None,
         tower_id: int | None = None,
     ) -> QualityAnalytics:
-        conds = [Pour.project_id == project.project_id]
-        if date_from is not None:
-            conds.append(CubeTest.test_date >= date_from)
-        if date_to is not None:
-            conds.append(CubeTest.test_date <= date_to)
-        if grade_id is not None:
-            conds.append(Pour.grade_id == grade_id)
-        if supplier_id is not None:
-            conds.append(Pour.supplier_horizontal_id == supplier_id)
-        if tower_id is not None:
-            conds.append(Pour.tower_id == tower_id)
+        # Acceptance basis: one definitive result per cube sample (its final test).
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date,
+                date_from=date_from,
+                date_to=date_to,
+                grade_id=grade_id,
+                supplier_id=supplier_id,
+                tower_id=tower_id,
+            ),
+        ]
 
         return QualityAnalytics(
             grade_trend=await self._grade_trend(conds),
@@ -101,8 +104,26 @@ class AnalyticsService:
             result_breakdown=await self._result_breakdown(conds),
         )
 
-    async def suppliers(self, project: Project) -> list[SupplierScore]:
+    async def suppliers(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+    ) -> list[SupplierScore]:
         pid = project.project_id
+        # Pour-side filters apply to the pour's own date; quality-side to the
+        # test date — each metric is filtered by the date it actually has.
+        pour_conds = self._dim_conds(
+            Pour.pour_date, date_from=date_from, date_to=date_to,
+            grade_id=grade_id, tower_id=tower_id,
+        )
+        test_conds = self._dim_conds(
+            CubeTest.test_date, date_from=date_from, date_to=date_to,
+            grade_id=grade_id, tower_id=tower_id,
+        )
         # Pour-side aggregates (count + volume) keyed by supplier.
         pour_rows = (
             await self.session.execute(
@@ -113,7 +134,7 @@ class AnalyticsService:
                     func.coalesce(func.sum(Pour.volume_cum), 0),
                 )
                 .join(Supplier, Supplier.supplier_id == Pour.supplier_horizontal_id)
-                .where(Pour.project_id == pid)
+                .where(Pour.project_id == pid, *pour_conds)
                 .group_by(Pour.supplier_horizontal_id, Supplier.supplier_name)
             )
         ).all()
@@ -136,7 +157,7 @@ class AnalyticsService:
                     _passes(CubeTest.result_status),
                     func.avg(CubeTest.observed_strength_mpa),
                 )
-                .where(Pour.project_id == pid)
+                .where(Pour.project_id == pid, self._final_test_cond(), *test_conds)
                 .group_by(Pour.supplier_horizontal_id)
             )
         ).all()
@@ -150,6 +171,57 @@ class AnalyticsService:
             score.avg_strength_mpa = round(float(avg), 2) if avg is not None else None
 
         return sorted(scores.values(), key=lambda s: s.supplier_name)
+
+    async def ncrs_by_supplier(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+    ) -> list[SupplierNcrCount]:
+        """NCRs grouped by the RMC supplier of the failing pour, split by status
+        (open vs closed) and severity (critical = triggering test was CRITICAL)."""
+        pid = project.project_id
+        conds = self._dim_conds(
+            CubeTest.test_date, date_from=date_from, date_to=date_to,
+            grade_id=grade_id, tower_id=tower_id,
+        )
+        rows = (
+            await self.session.execute(
+                select(
+                    Pour.supplier_horizontal_id,
+                    Supplier.supplier_name,
+                    func.count(NCR.ncr_id),
+                    func.sum(case((NCR.status == NCRStatus.CLOSED, 1), else_=0)),
+                    func.sum(case((NCR.status != NCRStatus.CLOSED, 1), else_=0)),
+                    func.sum(
+                        case(
+                            (CubeTest.result_status == ResultStatus.CRITICAL_FAILURE, 1),
+                            else_=0,
+                        )
+                    ),
+                )
+                .select_from(NCR)
+                .join(Pour, Pour.pour_id == NCR.pour_id)
+                .join(Supplier, Supplier.supplier_id == Pour.supplier_horizontal_id)
+                .join(CubeTest, CubeTest.test_id == NCR.test_id)
+                .where(Pour.project_id == pid, *conds)
+                .group_by(Pour.supplier_horizontal_id, Supplier.supplier_name)
+            )
+        ).all()
+        return [
+            SupplierNcrCount(
+                supplier_id=sid,
+                supplier_name=name,
+                total=int(total or 0),
+                closed_count=int(closed or 0),
+                open_count=int(open_ or 0),
+                critical_count=int(crit or 0),
+            )
+            for sid, name, total, closed, open_, crit in rows
+        ]
 
     # ── Overview helpers ─────────────────────────────────────────────────────
 
@@ -176,7 +248,7 @@ class AnalyticsService:
                         case((CubeTest.result_status == ResultStatus.CRITICAL_FAILURE, 1), else_=0)
                     ),
                     func.avg(CubeTest.observed_strength_mpa),
-                ).where(Pour.project_id == pid)
+                ).where(Pour.project_id == pid, self._final_test_cond())
             )
         ).one()
         kpis.test_count = total or 0
@@ -299,6 +371,55 @@ class AnalyticsService:
             )
         ).all()
         return [ResultBreakdown(status=status.value, count=count) for status, count in rows]
+
+    # ── Filters ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _dim_conds(
+        date_col,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        supplier_id: int | None = None,
+        tower_id: int | None = None,
+    ) -> list:
+        """The dashboard dimension filters as WHERE clauses. ``date_col`` is the
+        date column this metric is filtered on (a pour's pour_date, a test's
+        test_date); grade / supplier / tower always live on the pour."""
+        conds: list = []
+        if date_from is not None:
+            conds.append(date_col >= date_from)
+        if date_to is not None:
+            conds.append(date_col <= date_to)
+        if grade_id is not None:
+            conds.append(Pour.grade_id == grade_id)
+        if supplier_id is not None:
+            conds.append(Pour.supplier_horizontal_id == supplier_id)
+        if tower_id is not None:
+            conds.append(Pour.tower_id == tower_id)
+        return conds
+
+    # ── Acceptance basis ─────────────────────────────────────────────────────
+
+    def _final_test_cond(self):
+        """A WHERE condition that keeps only each sample's *acceptance* result —
+        its final test (highest age, e.g. the 28-day over an interim 7-day),
+        tie-broken by latest date / id. Pass/fail rates count one definitive
+        result per cube, not every age (an early-age FAIL doesn't sink a cube
+        that passes at 28 days). Demo/most data has one test per sample, so this
+        is a no-op there."""
+        rn = func.row_number().over(
+            partition_by=CubeTest.sample_id,
+            order_by=(
+                CubeTest.test_age_days.desc(),
+                CubeTest.test_date.desc(),
+                CubeTest.test_id.desc(),
+            ),
+        ).label("rn")
+        ranked = select(CubeTest.test_id.label("test_id"), rn).subquery()
+        final_ids = select(ranked.c.test_id).where(ranked.c.rn == 1)
+        return CubeTest.test_id.in_(final_ids)
 
     # ── Shared join ──────────────────────────────────────────────────────────
 

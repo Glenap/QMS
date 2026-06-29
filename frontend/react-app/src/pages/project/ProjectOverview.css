@@ -22,19 +22,3 @@
   font-size: 22px;
   margin-top: 4px;
 }
-
-.qms-checklist {
-  padding: 4px 2px;
-}
-
-.qms-checklist-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  font-size: 14px;
-}
-
-.qms-checklist-done {
-  color: var(--gray-800);
-}

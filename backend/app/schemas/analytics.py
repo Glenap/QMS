@@ -70,3 +70,19 @@ class SupplierScore(BaseModel):
     pass_count: int = 0
     pass_rate_pct: float | None = None
     avg_strength_mpa: float | None = None
+
+
+class SupplierNcrCount(BaseModel):
+    """NCRs raised against each supplier's pours, split by lifecycle + severity.
+
+    ``open_count`` + ``closed_count`` = ``total`` (status is mutually exclusive);
+    ``critical_count`` overlaps them — it counts the NCRs whose triggering cube
+    test was a CRITICAL_FAILURE, regardless of whether they're open or closed.
+    """
+
+    supplier_id: int
+    supplier_name: str
+    open_count: int = 0
+    closed_count: int = 0
+    critical_count: int = 0
+    total: int = 0

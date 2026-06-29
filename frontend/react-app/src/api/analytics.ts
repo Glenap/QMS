@@ -7,6 +7,7 @@ import type {
   OverviewKpis,
   QualityAnalytics,
   QualityFilters,
+  SupplierNcrCount,
   SupplierScore,
 } from '../types/master';
 
@@ -23,9 +24,15 @@ export const analyticsApi = {
       .then((r) => r.data);
   },
 
-  suppliers(projectId: number): Promise<SupplierScore[]> {
+  suppliers(projectId: number, filters: QualityFilters = {}): Promise<SupplierScore[]> {
     return api
-      .get<SupplierScore[]>(`/projects/${projectId}/analytics/suppliers`)
+      .get<SupplierScore[]>(`/projects/${projectId}/analytics/suppliers`, { params: filters })
+      .then((r) => r.data);
+  },
+
+  ncrsBySupplier(projectId: number, filters: QualityFilters = {}): Promise<SupplierNcrCount[]> {
+    return api
+      .get<SupplierNcrCount[]>(`/projects/${projectId}/analytics/ncrs-by-supplier`, { params: filters })
       .then((r) => r.data);
   },
 };

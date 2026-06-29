@@ -56,6 +56,15 @@ export interface SupplierScore {
   avg_strength_mpa: number | null;
 }
 
+export interface SupplierNcrCount {
+  supplier_id: number;
+  supplier_name: string;
+  open_count: number;
+  closed_count: number;
+  critical_count: number;
+  total: number;
+}
+
 export interface QualityFilters {
   date_from?: string; // ISO date
   date_to?: string; // ISO date

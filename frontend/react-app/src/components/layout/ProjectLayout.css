@@ -30,6 +30,14 @@
   color: var(--gray-900, #0f172a);
   margin: 0;
 }
+/* The project title doubles as a link back to the project dashboard. */
+.qms-pw-title-link {
+  text-decoration: none;
+  display: inline-block;
+}
+.qms-pw-title-link:hover .qms-pw-title {
+  color: var(--blue, #1d4ed8);
+}
 .qms-pw-sub {
   font-size: 13px;
   color: var(--gray-500, #64748b);

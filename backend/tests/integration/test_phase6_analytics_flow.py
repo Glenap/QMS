@@ -61,6 +61,30 @@ class TestOverviewKpis:
         assert body["pass_rate_pct"] == 0.0
         assert body["ncr_open"] == 1
 
+    async def test_pass_rate_uses_final_test_per_sample(self, client, db_session):
+        # One cube, two tests: an interim 7-day FAIL then the 28-day acceptance
+        # PASS. The acceptance basis counts only the final (28-day) result, so the
+        # cube reads as a single PASS — the early-age FAIL doesn't sink the rate.
+        _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+        sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
+        # M30, 7-day → required 19.5; observed 17.0 (>= 85% of 19.5) → FAIL.
+        await _record_test(
+            client, qe_token, pid, sample_id,
+            test_age_days=7, test_date="2026-07-22", observed_strength_mpa=17.0,
+        )
+        # M30, 28-day → required 30.0; observed 32.0 → PASS.
+        await _record_test(
+            client, qe_token, pid, sample_id,
+            test_age_days=28, test_date="2026-08-12", observed_strength_mpa=32.0,
+        )
+
+        body = (await _overview(client, qe_token, pid)).json()
+        assert body["test_count"] == 1
+        assert body["pass_count"] == 1
+        assert body["fail_count"] == 0
+        assert body["pass_rate_pct"] == 100.0
+        assert body["avg_strength_mpa"] == 32.0
+
 
 class TestQualityAnalytics:
     async def test_grade_trend_and_distribution(self, client, db_session):
@@ -118,6 +142,53 @@ class TestSupplierScorecard:
         assert score["pour_volume_cum"] == 30.0
         assert score["test_count"] == 1
         assert score["pass_rate_pct"] == 100.0
+
+    async def test_scorecard_honours_date_filter(self, client, db_session):
+        _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+        sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
+        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=32.0)
+        # A future date-from filters out the supplier's pours entirely.
+        rows = (
+            await client.get(
+                f"{API}/projects/{pid}/analytics/suppliers?date_from=2099-01-01",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        assert rows == []
+
+
+class TestNcrsBySupplier:
+    async def test_groups_open_and_critical_ncrs_by_supplier(self, client, db_session):
+        _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+        sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
+        # observed 20.0 → CRITICAL_FAILURE → auto-NCR (open + critical).
+        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+
+        rows = (
+            await client.get(
+                f"{API}/projects/{pid}/analytics/ncrs-by-supplier", headers=bearer(qe_token)
+            )
+        ).json()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["supplier_name"] == "UltraTech RMC"
+        assert row["total"] == 1
+        assert row["open_count"] == 1
+        assert row["closed_count"] == 0
+        assert row["critical_count"] == 1
+
+    async def test_ncrs_by_supplier_honours_grade_filter(self, client, db_session):
+        _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+        sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
+        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+        # Filtering to a grade that never poured leaves no NCRs.
+        rows = (
+            await client.get(
+                f"{API}/projects/{pid}/analytics/ncrs-by-supplier?grade_id=999999",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        assert rows == []
 
 
 class TestAnalyticsAccess:

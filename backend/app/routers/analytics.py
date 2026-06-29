@@ -13,7 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.project_access import require_project
 from app.database.session import get_db
 from app.models.master import Project
-from app.schemas.analytics import OverviewKpis, QualityAnalytics, SupplierScore
+from app.schemas.analytics import (
+    OverviewKpis,
+    QualityAnalytics,
+    SupplierNcrCount,
+    SupplierScore,
+)
 from app.services.analytics_service import AnalyticsService
 
 router = APIRouter(prefix="/projects", tags=["analytics"])
@@ -49,7 +54,30 @@ async def quality(
 
 @router.get("/{project_id}/analytics/suppliers", response_model=list[SupplierScore])
 async def suppliers(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    grade_id: int | None = None,
+    tower_id: int | None = None,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
 ):
-    return await AnalyticsService(db).suppliers(project)
+    return await AnalyticsService(db).suppliers(
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+    )
+
+
+@router.get(
+    "/{project_id}/analytics/ncrs-by-supplier",
+    response_model=list[SupplierNcrCount],
+)
+async def ncrs_by_supplier(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    grade_id: int | None = None,
+    tower_id: int | None = None,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AnalyticsService(db).ncrs_by_supplier(
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+    )
