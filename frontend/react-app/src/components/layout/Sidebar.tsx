@@ -9,7 +9,6 @@ import {
   Link as LinkIcon,
   Scan,
   AlertTriangle,
-  CheckSquare,
   Truck,
   Send,
   Building,
@@ -110,7 +109,6 @@ export const Sidebar: React.FC = () => {
 
           <div className="qms-nav-section">Quality</div>
           <NavLink to={`${base}/ncr`} className={item}><AlertTriangle size={18} /> NCR</NavLink>
-          <NavLink to={`${base}/audits`} className={item}><CheckSquare size={18} /> Audits</NavLink>
 
           <div className="qms-nav-section">Setup</div>
           <NavLink to={`${base}/team`} className={item}><Users size={18} /> Team</NavLink>

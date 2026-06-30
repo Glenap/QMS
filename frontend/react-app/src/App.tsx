@@ -30,7 +30,6 @@ import { ProjectMixDesigns } from './pages/project/ProjectMixDesigns';
 import { ProjectFloors } from './pages/project/ProjectFloors';
 import { Analytics } from './pages/project/Analytics';
 import { ProjectDocuments } from './pages/project/ProjectDocuments';
-import { AuditManagement } from './pages/project/AuditManagement';
 import { Traceability } from './pages/project/Traceability';
 import { PourCardForm } from './pages/project/PourCardForm';
 import { ProjectPours } from './pages/project/ProjectPours';
@@ -70,7 +69,6 @@ function App() {
               <Route index element={<ProjectOverview />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="documents" element={<ProjectDocuments />} />
-              <Route path="audits" element={<AuditManagement />} />
               <Route path="trace" element={<Traceability />} />
               <Route path="pours" element={<ProjectPours />} />
               <Route path="pours/new" element={<PourCardForm />} />
