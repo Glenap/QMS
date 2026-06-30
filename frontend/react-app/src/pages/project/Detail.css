@@ -58,3 +58,36 @@
 }
 
 .qms-detail-end { text-align: right; }
+
+/* Mix-design grade requests (SupplierDetail) */
+.qms-mix-grade-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.qms-mix-grade-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+.qms-mix-link-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.qms-mix-link-input {
+  flex: 1;
+  font-size: 12px;
+  padding: 7px 10px;
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: 8px;
+  background: var(--gray-50, #f9fafb);
+  color: var(--gray-600, #4b5563);
+}

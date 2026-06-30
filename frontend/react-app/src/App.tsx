@@ -8,6 +8,7 @@ import { VerifyOtpPage } from './pages/VerifyOtpPage';
 import { ConfirmRegistration } from './pages/ConfirmRegistration';
 import { DispatchFill } from './pages/DispatchFill';
 import { LabReport } from './pages/LabReport';
+import { MixDesignSubmit } from './pages/MixDesignSubmit';
 
 // Workspace entry + project listing
 import { AppHome } from './pages/AppHome';
@@ -47,6 +48,7 @@ function App() {
         <Route path="/external/confirm/:kind" element={<ConfirmRegistration />} />
         <Route path="/dispatch/fill" element={<DispatchFill />} />
         <Route path="/external/lab-report" element={<LabReport />} />
+        <Route path="/external/mix-design" element={<MixDesignSubmit />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/accept-invitation" element={<AcceptInvitationPage />} />

@@ -39,6 +39,7 @@ export interface SupplierResponse {
   confirmed_at: string | null;
   mix_design_document_id: number | null;
   mix_design_document_name: string | null;
+  mix_submission_token: string | null;
   created_at: string;
 }
 

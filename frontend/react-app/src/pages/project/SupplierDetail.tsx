@@ -1,21 +1,27 @@
-// One RMC supplier's detail: header + its mix designs grouped by grade.
-// Reached from a contractor's Suppliers tab or the project Suppliers table.
+// One RMC supplier's detail: header, the contractor's mix-design grade requests
+// (+ the RMC's tokenised submission link), and the submitted mix designs the QE
+// reviews. Reached from a contractor's Suppliers tab or the Suppliers table.
 
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Copy, Check } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { ErrorBox } from '../../components/ui/ErrorBox';
+import { MixDesignsPanel } from '../../components/mix/MixDesignsPanel';
 import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
 import { useSuppliers } from '../../queries/suppliers';
-import { useMixDesigns } from '../../queries/mixDesigns';
-import type {
-  ConfirmationStatus,
-  MixApprovalStatus,
-  MixDesignResponse,
-} from '../../types/master';
+import { useGrades } from '../../queries/catalog';
+import {
+  useRequiredGrades,
+  useSetRequiredGrades,
+  useSupplierMixDesigns,
+} from '../../queries/mixDesigns';
+import type { ConfirmationStatus } from '../../types/master';
 import './Detail.css';
 
 const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
@@ -24,44 +30,56 @@ const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
 const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
 };
-const APPROVAL_VARIANT: Record<MixApprovalStatus, 'pass' | 'fail' | 'warn'> = {
-  APPROVED: 'pass', REJECTED: 'fail', IN_PROGRESS: 'warn',
-};
-
-interface GradeGroup {
-  gradeId: number;
-  gradeName: string;
-  designs: MixDesignResponse[];
-}
 
 export const SupplierDetail: React.FC = () => {
   const { project } = useProject();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
   const { supplierId } = useParams();
   const sid = Number(supplierId);
+  const canManage = project.access.can_manage_contractor_side;
+  const isQE = user?.role === 'QUALITY_ENGINEER';
 
   const suppliersQuery = useSuppliers(pid);
-  const designsQuery = useMixDesigns(pid);
+  const designsQuery = useSupplierMixDesigns(pid, sid);
+  const requiredQuery = useRequiredGrades(pid, sid);
+  const { data: grades = [] } = useGrades();
+  const setRequired = useSetRequiredGrades(pid, sid);
+
+  const [copied, setCopied] = useState(false);
+
   const loading = suppliersQuery.isPending || designsQuery.isPending;
   const loadError = suppliersQuery.error ?? designsQuery.error;
-
   const supplier = (suppliersQuery.data ?? []).find((s) => s.supplier_id === sid) ?? null;
-  const designs = useMemo(
-    () => (designsQuery.data ?? []).filter((m) => m.supplier_id === sid),
-    [designsQuery.data, sid],
-  );
+  const designs = designsQuery.data ?? [];
+  const requiredIds = new Set((requiredQuery.data ?? []).map((g) => g.grade_id));
 
-  // grades → mix designs: one section per grade, designs nested under it.
-  const groups = useMemo<GradeGroup[]>(() => {
-    const map = new Map<number, GradeGroup>();
-    for (const m of designs) {
-      const g = map.get(m.grade_id);
-      if (g) g.designs.push(m);
-      else map.set(m.grade_id, { gradeId: m.grade_id, gradeName: m.grade_name ?? `Grade #${m.grade_id}`, designs: [m] });
+  const submissionLink = supplier?.mix_submission_token
+    ? `${window.location.origin}/external/mix-design?token=${supplier.mix_submission_token}`
+    : null;
+
+  const toggleGrade = async (gradeId: number) => {
+    const next = new Set(requiredIds);
+    if (next.has(gradeId)) next.delete(gradeId);
+    else next.add(gradeId);
+    try {
+      await setRequired.mutateAsync([...next]);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not update requested grades.'));
     }
-    return [...map.values()].sort((a, b) => a.gradeName.localeCompare(b.gradeName));
-  }, [designs]);
+  };
+
+  const copyLink = async () => {
+    if (!submissionLink) return;
+    try {
+      await navigator.clipboard.writeText(submissionLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Could not copy the link.');
+    }
+  };
 
   const backTo = supplier
     ? `/app/projects/${pid}/contractors/${supplier.contractor_org_id}`
@@ -96,47 +114,54 @@ export const SupplierDetail: React.FC = () => {
             </div>
           </Card>
 
+          {canManage && (
+            <Card className="qms-form-section">
+              <h3 className="qms-section-heading-plain qms-mb-12">Mix designs requested</h3>
+              <p className="text-muted qms-text-sm qms-mb-12">
+                Pick the grades this plant must submit a mix design for. They get a
+                link to submit one per grade; the quality engineer approves each.
+              </p>
+              <div className="qms-mix-grade-picker">
+                {grades.map((g) => (
+                  <label key={g.grade_id} className="qms-mix-grade-chip">
+                    <input
+                      type="checkbox"
+                      checked={requiredIds.has(g.grade_id)}
+                      disabled={setRequired.isPending}
+                      onChange={() => toggleGrade(g.grade_id)}
+                    />
+                    {g.grade_name}
+                  </label>
+                ))}
+              </div>
+              {submissionLink && (
+                <div className="qms-mix-link-row">
+                  <input className="qms-mix-link-input" readOnly value={submissionLink} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    icon={copied ? <Check size={14} /> : <Copy size={14} />}
+                    onClick={copyLink}
+                  >
+                    {copied ? 'Copied' : 'Copy link'}
+                  </Button>
+                </div>
+              )}
+            </Card>
+          )}
+
           <Card className="qms-form-section" padding="none">
             <div className="qms-p-4 qms-border-b">
-              <h3 className="qms-section-heading-plain">Mix designs by grade</h3>
+              <h3 className="qms-section-heading-plain">Submitted mix designs</h3>
             </div>
-            <div className="qms-p-4 qms-detail-groups">
-              {groups.length === 0 ? (
-                <p className="text-muted qms-text-sm qms-detail-msg">No mix designs registered for this supplier yet.</p>
-              ) : (
-                groups.map((g) => (
-                  <div key={g.gradeId}>
-                    <div className="qms-detail-group-head">
-                      <span className="font-medium qms-detail-group-name">{g.gradeName}</span>
-                      <span className="qms-text-sm text-muted">
-                        {g.designs.length} mix design{g.designs.length === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                    <div className="qms-table-container">
-                      <table className="qms-table">
-                        <thead>
-                          <tr><th>W/C ratio</th><th>Cement</th><th>28-day strength</th><th>Approval</th><th>Added</th></tr>
-                        </thead>
-                        <tbody>
-                          {g.designs.map((m) => (
-                            <tr key={m.mix_design_id}>
-                              <td>{m.wc_ratio ?? '—'}</td>
-                              <td>{m.cement_type ? m.cement_type.replace('_', ' ') : '—'}</td>
-                              <td>{m.strength_28day_mpa != null ? `${m.strength_28day_mpa} MPa` : '—'}</td>
-                              <td>
-                                {m.approval_status
-                                  ? <Badge variant={APPROVAL_VARIANT[m.approval_status]}>{m.approval_status.replace('_', ' ')}</Badge>
-                                  : '—'}
-                              </td>
-                              <td>{new Date(m.created_at).toLocaleDateString()}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="qms-p-4">
+              <MixDesignsPanel
+                pid={pid}
+                designs={designs}
+                canReview={isQE}
+                showSupplier={false}
+                emptyText="This plant hasn't submitted any mix designs yet."
+              />
             </div>
           </Card>
         </>
