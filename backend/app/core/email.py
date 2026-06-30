@@ -175,6 +175,50 @@ async def send_supplier_confirmation_email(
     )
 
 
+async def send_mix_design_request_email(
+    supplier_email: str,
+    supplier_name: str,
+    project_name: str,
+    grades: str,
+    registered_by: str,
+    token: str,
+) -> None:
+    """Sent when a contractor asks an RMC supplier to submit mix designs for a
+    set of grades. The supplier fills one mix-design form per grade through this
+    tokenised link — NO login needed.
+    Link goes to: {FRONTEND_URL}/external/mix-design?token={token}
+    """
+    submit_url = f"{settings.FRONTEND_URL}/external/mix-design?token={token}"
+    html_body = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto">
+      <h2 style="color:#1e293b">Mix design submission — {project_name}</h2>
+      <p>Hi {supplier_name},</p>
+      <p><strong>{registered_by}</strong> has requested mix designs from you for
+      the project <strong>{project_name}</strong> for these grades:
+      <strong>{grades}</strong>.</p>
+      <p>Open the link below to submit one mix design per grade. The project's
+      quality engineer reviews each one before it can be used. No account or
+      password is needed.</p>
+      <p style="margin:24px 0">
+        <a href="{submit_url}"
+           style="background:#1A56DB;color:#fff;text-decoration:none;
+                  padding:12px 24px;border-radius:8px;font-weight:600">
+          Submit mix designs
+        </a>
+      </p>
+      <p style="color:#64748b;font-size:13px">This link is unique to your plant —
+      please don't share it.</p>
+    </div>
+    """
+    message = MessageSchema(
+        subject=f"Mix designs requested — {project_name}",
+        recipients=[supplier_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await fastmail.send_message(message)
+
+
 async def send_lab_confirmation_email(
     lab_email: str,
     lab_name: str,

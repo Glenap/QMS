@@ -394,29 +394,50 @@ async def seed() -> None:
         grade_by = {g["grade_name"]: g for g in grades}
         fallback_grade = grades[0]
 
-        # A pour may only use a grade with an APPROVED mix design — seed one per
-        # (supplier, grade) the plan uses.
-        seen_mix: set[tuple[int, int]] = set()
+        # A pour may only use a grade with an APPROVED mix design. Mix designs are
+        # RMC-owned now: the contractor requests the grades it needs from each
+        # supplier → the RMC submits one per grade via its tokenised link → the QE
+        # approves. Group the plan's grades per supplier, then drive that flow.
+        grades_by_supplier: dict[int, set[int]] = {}
         for _ti, _fi, _comp, gname, skey, *_rest in POUR_PLAN:
             grade = grade_by.get(gname) or fallback_grade
             supplier = suppliers[skey]
-            key = (supplier["supplier_id"], grade["grade_id"])
-            if key in seen_mix:
-                continue
-            seen_mix.add(key)
+            grades_by_supplier.setdefault(supplier["supplier_id"], set()).add(
+                grade["grade_id"]
+            )
+
+        for sup_id, grade_ids in grades_by_supplier.items():
             _ok(
-                await c.post(
-                    f"{API}/projects/{pid}/mix-designs",
-                    json={
-                        "supplier_id": supplier["supplier_id"],
-                        "grade_id": grade["grade_id"],
-                        "wc_ratio": 0.45,
-                        "approval_status": "APPROVED",
-                    },
+                await c.put(
+                    f"{API}/projects/{pid}/suppliers/{sup_id}/required-grades",
+                    json={"grade_ids": sorted(grade_ids)},
                     headers=_bearer(contractor_tok),
                 ),
-                "create mix design",
+                "request mix grades",
             )
+            sups = _ok(
+                await c.get(f"{API}/projects/{pid}/suppliers", headers=_bearer(contractor_tok)),
+                "suppliers",
+            ).json()
+            token = next(
+                s["mix_submission_token"] for s in sups if s["supplier_id"] == sup_id
+            )
+            for gid in sorted(grade_ids):
+                submitted = _ok(
+                    await c.post(
+                        f"{API}/external/mix-design?token={token}",
+                        json={"grade_id": gid, "wc_ratio": 0.45},
+                    ),
+                    "submit mix design",
+                ).json()
+                _ok(
+                    await c.patch(
+                        f"{API}/projects/{pid}/mix-designs/{submitted['mix_design_id']}/review",
+                        json={"approval_status": "APPROVED"},
+                        headers=_bearer(qe_tok),
+                    ),
+                    "approve mix design",
+                )
 
         ncr_pours = 0
         for seq, (ti, fi, comp, gname, skey, outcome, cast, test, truck) in enumerate(POUR_PLAN, 1):

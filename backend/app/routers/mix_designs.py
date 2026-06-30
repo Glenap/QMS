@@ -1,21 +1,30 @@
 """mix_designs.py router — project-scoped /projects/{id}/mix-designs.
 
-Mix designs are submitted on the contractor side (their suppliers' approved
-mixes). Listing is open to anyone who can view the project.
+Mix designs are **RMC-owned** (the RMC submits them through a tokenised link, see
+the public mix-submission router). Here the quality engineer **reviews** them
+(approve / reject / in-progress) and anyone who can view the project can list them.
 """
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.project_access import ensure_can_manage_contractor_side, require_project
+from app.core.exceptions import PermissionDeniedError
+from app.core.project_access import require_project
 from app.database.session import get_db
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Project
-from app.schemas.master import GradeResponse, MixDesignCreate, MixDesignResponse
+from app.schemas.master import GradeResponse, MixDesignResponse, MixDesignReview
 from app.services.mixdesign_service import MixDesignService
 
 router = APIRouter(prefix="/projects", tags=["mix-designs"])
+
+
+def _ensure_quality_engineer(user: User) -> None:
+    if user.role != UserRole.QUALITY_ENGINEER:
+        raise PermissionDeniedError(
+            "Only a quality engineer can review mix designs"
+        )
 
 
 @router.get("/{project_id}/mix-designs", response_model=list[MixDesignResponse])
@@ -38,14 +47,19 @@ async def list_approved_grades(
     return await MixDesignService(db).approved_grades(project)
 
 
-@router.post(
-    "/{project_id}/mix-designs", response_model=MixDesignResponse, status_code=201
+@router.patch(
+    "/{project_id}/mix-designs/{mix_design_id}/review",
+    response_model=MixDesignResponse,
 )
-async def create_mix_design(
-    data: MixDesignCreate,
+async def review_mix_design(
+    mix_design_id: int,
+    data: MixDesignReview,
     project: Project = Depends(require_project),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_can_manage_contractor_side(db, current_user, project)
-    return await MixDesignService(db).create(project, data)
+    """QE decision on a submitted mix design: APPROVE / REJECT(+reason) / IN_PROGRESS."""
+    _ensure_quality_engineer(current_user)
+    return await MixDesignService(db).review(
+        project, mix_design_id, data, current_user
+    )

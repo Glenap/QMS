@@ -76,9 +76,10 @@ class LabType(str, enum.Enum):
 
 
 class MixApprovalStatus(str, enum.Enum):
+    PENDING = "PENDING"  # submitted by the RMC, awaiting QE review
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
-    IN_PROGRESS = "IN_PROGRESS"
+    IN_PROGRESS = "IN_PROGRESS"  # QE has it under review
 
 
 class Project(Base):
@@ -365,12 +366,50 @@ class Supplier(Base):
     mix_design_document_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("master.documents.document_id"), nullable=True
     )
+    # ── RMC mix-design submission link (Phase 4A, separate from the contact
+    # confirmation token) — the RMC submits a mix design per grade the contractor
+    # requested through this tokenised public page. ──
+    mix_submission_token: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
+    mix_submission_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
     mix_designs: Mapped[list["MixDesign"]] = relationship(
         "MixDesign", back_populates="supplier"
+    )
+    required_grades: Mapped[list["SupplierRequiredGrade"]] = relationship(
+        "SupplierRequiredGrade", back_populates="supplier"
+    )
+
+
+class SupplierRequiredGrade(Base):
+    """A grade the contractor wants this RMC supplier to submit a mix design for.
+    The RMC fills one mix-design form per required grade via its submission link."""
+
+    __tablename__ = "supplier_required_grades"
+    __table_args__ = (
+        UniqueConstraint("supplier_id", "grade_id", name="uq_supplier_required_grade"),
+        {"schema": "master"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    supplier_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.suppliers.supplier_id"), nullable=False
+    )
+    grade_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.grades.grade_id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    supplier: Mapped["Supplier"] = relationship(
+        "Supplier", back_populates="required_grades"
     )
 
 
@@ -427,6 +466,25 @@ class MixDesign(Base):
     approval_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     approved_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    # ── RMC-submitted mix design + QE review (Phase 4A) ──
+    # The RMC fills the detailed form per requested grade; the QE reviews
+    # (approve / reject-with-reason / in-progress) and records the strength they
+    # observed at 28 days. ``mix_design_ref`` is the RMC's own label ("MIX-001").
+    mix_design_ref: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    mix_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    exposure_condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ggbs_kg: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    total_binder_kg: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    free_water_l: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    target_mean_strength_mpa: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), nullable=True
+    )
+    max_aggregate_size_mm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    slump_range_mm: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_28day_strength_mpa: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

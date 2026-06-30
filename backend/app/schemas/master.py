@@ -156,6 +156,7 @@ class SupplierResponse(BaseModel):
     confirmed_at: datetime | None
     mix_design_document_id: int | None = None
     mix_design_document_name: str | None = None
+    mix_submission_token: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -374,14 +375,93 @@ class MixDesignResponse(BaseModel):
     supplier_name: str | None = None
     grade_id: int
     grade_name: str | None = None
-    contractor_name: str | None
-    wc_ratio: float | None
-    cement_type: CementType | None
-    approval_status: MixApprovalStatus | None
-    strength_28day_mpa: float | None
+    contractor_name: str | None = None
+    # RMC submission detail (the screenshot form) — surfaced so the QE can review.
+    mix_design_ref: str | None = None
+    mix_type: str | None = None
+    exposure_condition: str | None = None
+    cement_type: CementType | None = None
+    cement_kg: float | None = None
+    flyash_kg: float | None = None
+    ggbs_kg: float | None = None
+    total_binder_kg: float | None = None
+    wc_ratio: float | None = None
+    free_water_l: float | None = None
+    water_kg: float | None = None
+    coarse_20mm_kg: float | None = None
+    coarse_10mm_kg: float | None = None
+    fine_agg_kg: float | None = None
+    admixture_brand: str | None = None
+    admixture_pct: float | None = None
+    target_mean_strength_mpa: float | None = None
+    max_aggregate_size_mm: int | None = None
+    slump_range_mm: str | None = None
+    trial_mix_date: date | None = None
+    strength_28day_mpa: float | None = None
+    # QE review outcome.
+    approval_status: MixApprovalStatus | None = None
+    rejection_reason: str | None = None
+    observed_28day_strength_mpa: float | None = None
+    approval_date: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class MixDesignSubmit(BaseModel):
+    """One mix design the RMC submits for a requested grade (public token page)."""
+
+    grade_id: int
+    mix_design_ref: str | None = None
+    mix_type: str | None = None
+    exposure_condition: str | None = None
+    cement_type: CementType | None = None
+    cement_kg: float | None = None
+    flyash_kg: float | None = None
+    ggbs_kg: float | None = None
+    total_binder_kg: float | None = None
+    wc_ratio: float | None = None
+    free_water_l: float | None = None
+    water_kg: float | None = None
+    coarse_20mm_kg: float | None = None
+    coarse_10mm_kg: float | None = None
+    fine_agg_kg: float | None = None
+    admixture_brand: str | None = None
+    admixture_pct: float | None = None
+    target_mean_strength_mpa: float | None = None
+    max_aggregate_size_mm: int | None = None
+    slump_range_mm: str | None = None
+    trial_mix_date: date | None = None
+
+
+class MixDesignReview(BaseModel):
+    """The QE's decision on a submitted mix design."""
+
+    approval_status: MixApprovalStatus  # APPROVED | IN_PROGRESS | REJECTED
+    rejection_reason: str | None = None
+    observed_28day_strength_mpa: float | None = None
+
+
+class RequiredGradesUpdate(BaseModel):
+    """The grades a contractor wants this RMC supplier to submit mix designs for."""
+
+    grade_ids: list[int]
+
+
+class RequiredGradeInfo(BaseModel):
+    grade_id: int
+    grade_name: str | None = None
+    mix_design_id: int | None = None
+    approval_status: MixApprovalStatus | None = None
+
+
+class MixSubmissionView(BaseModel):
+    """Public token view for the RMC mix-design submission page."""
+
+    supplier_name: str
+    project_name: str | None = None
+    registered_by: str | None = None
+    required_grades: list[RequiredGradeInfo] = []
 
 
 # ---------------------------------------------------------------------------

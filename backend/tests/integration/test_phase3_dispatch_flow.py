@@ -8,10 +8,13 @@ Plus RBAC (QE raises, Supervisor gates), the truck state machine, and volume
 accounting on accept.
 """
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.models.auth import OrgInvitation
-from tests.helpers import API, accept_and_verify, bearer
+from app.models.transaction import RMCDispatch
+from tests.helpers import API, accept_and_verify, approve_mix_design, bearer
 from tests.integration.test_phase2_pour_flow import _project_with_qe
 
 
@@ -60,15 +63,15 @@ async def _dispatch_refs(client, contractor_token, qe_token, project_id) -> dict
             headers=bearer(contractor_token),
         )
     ).json()
-    # A pour needs an APPROVED mix design for its grade (see PourService).
-    await client.post(
-        f"{API}/projects/{project_id}/mix-designs",
-        json={
-            "supplier_id": supplier["supplier_id"],
-            "grade_id": m30["grade_id"],
-            "approval_status": "APPROVED",
-        },
-        headers=bearer(contractor_token),
+    # A pour needs an APPROVED mix design for its grade (see PourService) — drive
+    # the RMC-owned flow (request grade → RMC submits → QE approves).
+    await approve_mix_design(
+        client,
+        contractor_token=contractor_token,
+        qe_token=qe_token,
+        project_id=project_id,
+        supplier_id=supplier["supplier_id"],
+        grade_id=m30["grade_id"],
     )
     pour = (
         await client.post(
@@ -362,6 +365,85 @@ class TestPourVolumeFlow:
             json={"rejection_reason": "Slump out of range at the gate"},
             headers=bearer(sup_token),
         )
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "PLANNED"
+        assert pour["volume_delivered_cum"] == 0.0
+        assert pour["volume_remaining_cum"] == 30.0
+
+
+async def _backdate_dispatch(db_session, dispatch_id, minutes):
+    """Move a dispatch's batching time into the past to simulate transit elapsed.
+    db_session shares the client's connection, so the next request sees it."""
+    dispatch = await db_session.get(RMCDispatch, dispatch_id)
+    dispatch.dispatch_time = datetime.now(UTC) - timedelta(minutes=minutes)
+    await db_session.flush()
+
+
+class TestPlacementWindow:
+    """90-minute concrete placement window: a load reaching the gate within the
+    window is admitted; one that took too long is auto-rejected at the scan."""
+
+    async def test_arrival_within_window_is_admitted(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
+        token = (await _raise_dispatch(client, qe_token, pid, refs)).json()["truck"]["token"]
+        await _fill_truck(client, token)  # dispatch_time = now
+
+        arrived = await client.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={},
+            headers=bearer(sup_token),
+        )
+        assert arrived.status_code == 200, arrived.text
+        body = arrived.json()
+        assert body["truck"]["status"] == "ARRIVED"
+        assert body["placement_window_minutes"] == 90
+        assert body["transit_minutes"] is not None
+        assert body["transit_minutes"] <= 90
+
+    async def test_arrival_past_window_is_auto_rejected(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
+        created = (await _raise_dispatch(client, qe_token, pid, refs)).json()
+        dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
+        await _fill_truck(client, token)
+        await _backdate_dispatch(db_session, dispatch_id, minutes=120)
+
+        arrived = await client.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={},
+            headers=bearer(sup_token),
+        )
+        assert arrived.status_code == 200, arrived.text
+        body = arrived.json()
+        assert body["truck"]["status"] == "REJECTED"
+        assert "90-minute" in body["truck"]["rejection_reason"]
+        assert body["transit_minutes"] > 90
+
+    async def test_auto_rejected_load_is_not_credited_to_its_pour(
+        self, client, db_session
+    ):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        created = (
+            await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=30.0)
+        ).json()
+        dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
+        await _fill_truck(client, token, volume_cum=30.0)
+        await _backdate_dispatch(db_session, dispatch_id, minutes=120)
+
+        await client.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={},
+            headers=bearer(sup_token),
+        )
+        # A window auto-reject can't then be accepted, and nothing is delivered.
         pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
         assert pour["status"] == "PLANNED"
         assert pour["volume_delivered_cum"] == 0.0

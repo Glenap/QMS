@@ -8,7 +8,7 @@ Integration tests for Phase 2 — the pour lifecycle:
 from sqlalchemy import select
 
 from app.models.auth import OrgInvitation
-from tests.helpers import API, accept_and_verify, bearer
+from tests.helpers import API, accept_and_verify, approve_mix_design, bearer
 from tests.integration.test_phase1_master_flow import (
     _client_with_project,
     _contractor_on_project,
@@ -57,16 +57,16 @@ async def _pour_refs(client, db_session, contractor_token, qe_token, project_id)
             headers=bearer(contractor_token),
         )
     ).json()
-    # A pour may only use a grade with an APPROVED mix design — set one up so the
+    # A pour may only use a grade with an APPROVED mix design — drive the
+    # RMC-owned flow (request grade → RMC submits → QE approves) so the
     # downstream pour flows (phases 2/4/5/6/9) can raise M30 pours.
-    await client.post(
-        f"{API}/projects/{project_id}/mix-designs",
-        json={
-            "supplier_id": supplier["supplier_id"],
-            "grade_id": m30["grade_id"],
-            "approval_status": "APPROVED",
-        },
-        headers=bearer(contractor_token),
+    await approve_mix_design(
+        client,
+        contractor_token=contractor_token,
+        qe_token=qe_token,
+        project_id=project_id,
+        supplier_id=supplier["supplier_id"],
+        grade_id=m30["grade_id"],
     )
     return {
         "tower_id": tower_id,
@@ -251,14 +251,13 @@ class TestPourTowerScope:
                 headers=bearer(contractor_token),
             )
         ).json()
-        await client.post(
-            f"{API}/projects/{project_id}/mix-designs",
-            json={
-                "supplier_id": supplier["supplier_id"],
-                "grade_id": m30["grade_id"],
-                "approval_status": "APPROVED",
-            },
-            headers=bearer(contractor_token),
+        await approve_mix_design(
+            client,
+            contractor_token=contractor_token,
+            qe_token=qe_token,
+            project_id=project_id,
+            supplier_id=supplier["supplier_id"],
+            grade_id=m30["grade_id"],
         )
         return {
             "tower_id": tower_id,

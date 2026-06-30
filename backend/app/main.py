@@ -17,6 +17,7 @@ from app.routers import (
     lab_report,
     labs,
     mix_designs,
+    mix_submission,
     ncrs,
     pours,
     projects,
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router, prefix=settings.API_V1_PREFIX)
     app.include_router(floors.router, prefix=settings.API_V1_PREFIX)
     app.include_router(mix_designs.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(mix_submission.router, prefix=settings.API_V1_PREFIX)
     app.include_router(confirmations.router, prefix=settings.API_V1_PREFIX)
     app.include_router(pours.router, prefix=settings.API_V1_PREFIX)
     app.include_router(dispatches.router, prefix=settings.API_V1_PREFIX)

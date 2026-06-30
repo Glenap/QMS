@@ -18,6 +18,7 @@ from app.models.master import (
     Project,
     ProjectContractor,
     Supplier,
+    SupplierRequiredGrade,
     TestingLab,
     Tower,
 )
@@ -35,7 +36,8 @@ __all__ = [
     "Organisation", "User", "ProjectTeam", "ProjectMember", "OrgInvitation",
     "TokenBlacklist", "EmailOtp",
     "Project", "ProjectContractor", "Tower", "Floor", "Component",
-    "Grade", "GradeThreshold", "Supplier", "MixDesign", "TestingLab", "Document",
+    "Grade", "GradeThreshold", "Supplier", "SupplierRequiredGrade", "MixDesign",
+    "TestingLab", "Document",
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
     "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion", "NCREmbedding",
     "AuditLog", "IngestionLog", "Embedding",
