@@ -48,6 +48,7 @@ export const MixDesignSubmit: React.FC = () => {
 
   const [gradeId, setGradeId] = useState('');
   const [text, setText] = useState<Record<string, string>>({});
+  const [file, setFile] = useState<File | null>(null);
   const set = (k: string, v: string) => setText((t) => ({ ...t, [k]: v }));
 
   useEffect(() => {
@@ -81,6 +82,10 @@ export const MixDesignSubmit: React.FC = () => {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gradeId) return;
+    if (!file) {
+      setError('Attach the mix-design PDF — it is required.');
+      return;
+    }
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -95,9 +100,10 @@ export const MixDesignSubmit: React.FC = () => {
         slump_range_mm: text.slump_range_mm || null,
         admixture_brand: text.admixture_brand || null,
         ...Object.fromEntries(NUM_FIELDS.map(([k]) => [k, num(text[k])])),
-      });
+      }, file);
       setNotice('Mix design submitted — the quality engineer will review it.');
       setText({});
+      setFile(null);
       setView(await mixSubmissionApi.view(token));
     } catch (err) {
       setError(getApiErrorMessage(err, 'Could not submit the mix design. Please try again.'));
@@ -179,7 +185,17 @@ export const MixDesignSubmit: React.FC = () => {
                   <Input label="Slump range mm" placeholder="e.g. 100-150" value={text.slump_range_mm ?? ''} onChange={(e) => set('slump_range_mm', e.target.value)} />
                 </div>
 
-                <Button type="submit" variant="primary" fullWidth icon={<FlaskConical size={16} />} disabled={busy || !gradeId} style={{ marginTop: 12 }}>
+                <label className="qms-input-label" style={{ display: 'block', marginTop: 8 }}>
+                  Mix design PDF (required)
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    style={{ display: 'block', marginTop: 4 }}
+                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+
+                <Button type="submit" variant="primary" fullWidth icon={<FlaskConical size={16} />} disabled={busy || !gradeId || !file} style={{ marginTop: 12 }}>
                   {busy ? 'Submitting…' : 'Submit mix design'}
                 </Button>
               </form>

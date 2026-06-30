@@ -76,6 +76,10 @@ export const LabReport: React.FC = () => {
   };
 
   const submit = async (age: number) => {
+    if (!files[age]) {
+      setError('Attach the signed report PDF — it is required.');
+      return;
+    }
     setError(null);
     setNotice(null);
     setBusyAge(age);
@@ -192,7 +196,7 @@ export const LabReport: React.FC = () => {
                           onChange={(e) => setObserved((o) => ({ ...o, [m.test_age_days]: e.target.value }))}
                         />
                         <label className="qms-labreport-file">
-                          <Upload size={14} /> {files[m.test_age_days]?.name ?? 'Attach report PDF (optional)'}
+                          <Upload size={14} /> {files[m.test_age_days]?.name ?? 'Attach signed report PDF (required)'}
                           <input
                             type="file"
                             accept="application/pdf,image/*"
@@ -202,7 +206,7 @@ export const LabReport: React.FC = () => {
                         <Button
                           type="button" variant="primary" size="sm" icon={<FlaskConical size={14} />}
                           onClick={() => submit(m.test_age_days)}
-                          disabled={busyAge === m.test_age_days || !observed[m.test_age_days]}
+                          disabled={busyAge === m.test_age_days || !observed[m.test_age_days] || !files[m.test_age_days]}
                         >
                           {busyAge === m.test_age_days ? 'Submitting…' : `Submit ${m.test_age_days}-day report`}
                         </Button>

@@ -13,7 +13,7 @@ import type {
 } from '../types/master';
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
-const publicApi = axios.create({ baseURL, headers: { 'Content-Type': 'application/json' } });
+const publicApi = axios.create({ baseURL });
 
 export const mixSubmissionApi = {
   view(token: string): Promise<MixSubmissionView> {
@@ -21,9 +21,14 @@ export const mixSubmissionApi = {
       .get<MixSubmissionView>('/external/mix-design', { params: { token } })
       .then((r) => r.data);
   },
-  submit(token: string, data: MixDesignSubmit): Promise<MixDesignResponse> {
+  // Multipart: the fields ride as a JSON `payload` field alongside the mandatory
+  // mix-design PDF (let axios set the multipart boundary itself).
+  submit(token: string, data: MixDesignSubmit, file: File): Promise<MixDesignResponse> {
+    const fd = new FormData();
+    fd.append('payload', JSON.stringify(data));
+    fd.append('file', file);
     return publicApi
-      .post<MixDesignResponse>('/external/mix-design', data, { params: { token } })
+      .post<MixDesignResponse>('/external/mix-design', fd, { params: { token } })
       .then((r) => r.data);
   },
 };

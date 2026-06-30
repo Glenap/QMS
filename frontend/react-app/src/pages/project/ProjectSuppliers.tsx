@@ -95,7 +95,7 @@ export const ProjectSuppliers: React.FC = () => {
             <Input label="GST number" value={form.gst_number} onChange={set('gst_number')} />
             <Input label="Plant location" value={form.plant_location} onChange={set('plant_location')} />
             <Input label="Distance from site (km)" type="number" value={form.plant_distance_km} onChange={set('plant_distance_km')} />
-            <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
+            <Input label="Contact email" type="email" required value={form.contact_email} onChange={set('contact_email')} placeholder="RMC plant gets its links here" />
             <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
             <Select
               label="Mix design document"
@@ -107,7 +107,7 @@ export const ProjectSuppliers: React.FC = () => {
               ]}
             />
             <div className="qms-form-actions qms-grid-span-2">
-              <Button type="submit" variant="primary" disabled={createSupplier.isPending} icon={<Plus size={16} />}>
+              <Button type="submit" variant="primary" disabled={createSupplier.isPending || !form.supplier_name.trim() || !form.contact_email.trim()} icon={<Plus size={16} />}>
                 {createSupplier.isPending ? 'Registering…' : 'Register supplier'}
               </Button>
               <Button type="button" variant="ghost" disabled={createSupplier.isPending} onClick={() => setShowForm(false)}>

@@ -87,10 +87,10 @@ export const ProjectLabs: React.FC = () => {
             <Input label="Accreditation no." value={form.accreditation_no} onChange={set('accreditation_no')} />
             <Input label="City" value={form.city} onChange={set('city')} />
             <Input label="State" value={form.state} onChange={set('state')} />
-            <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
+            <Input label="Contact email" type="email" required value={form.contact_email} onChange={set('contact_email')} placeholder="Lab gets its report links here" />
             <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
             <div className="qms-form-actions qms-grid-span-2">
-              <Button type="submit" variant="primary" disabled={createLab.isPending} icon={<Plus size={16} />}>
+              <Button type="submit" variant="primary" disabled={createLab.isPending || !form.lab_name.trim() || !form.contact_email.trim()} icon={<Plus size={16} />}>
                 {createLab.isPending ? 'Registering…' : 'Register lab'}
               </Button>
               <Button type="button" variant="ghost" disabled={createLab.isPending} onClick={() => setShowForm(false)}>
