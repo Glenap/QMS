@@ -3,9 +3,13 @@
 
 import { api } from './client';
 import type {
+  ActionRequired,
   DispatchCreate,
   DispatchResponse,
   GateTruckView,
+  InsituSubmit,
+  QEInboxCount,
+  QEReviewItem,
   TruckArrive,
   TruckReject,
 } from '../types/master';
@@ -63,6 +67,41 @@ export const dispatchesApi = {
   gateReject(projectId: number, token: string, data: TruckReject): Promise<GateTruckView> {
     return api
       .post<GateTruckView>(`/projects/${projectId}/gate/${token}/reject`, data)
+      .then((r) => r.data);
+  },
+
+  // Supervisor flags a mismatch on an admitted truck → QE inbox.
+  gateActionRequired(
+    projectId: number,
+    token: string,
+    data: ActionRequired,
+  ): Promise<GateTruckView> {
+    return api
+      .post<GateTruckView>(`/projects/${projectId}/gate/${token}/action-required`, data)
+      .then((r) => r.data);
+  },
+
+  // ── QE inbox + in-situ slump sign-off (QUALITY_ENGINEER) ──────────────────
+
+  qeInbox(projectId: number): Promise<QEReviewItem[]> {
+    return api
+      .get<QEReviewItem[]>(`/projects/${projectId}/qe-inbox`)
+      .then((r) => r.data);
+  },
+
+  qeInboxCount(projectId: number): Promise<QEInboxCount> {
+    return api
+      .get<QEInboxCount>(`/projects/${projectId}/qe-inbox/count`)
+      .then((r) => r.data);
+  },
+
+  recordInsitu(
+    projectId: number,
+    dispatchId: number,
+    data: InsituSubmit,
+  ): Promise<GateTruckView> {
+    return api
+      .post<GateTruckView>(`/projects/${projectId}/dispatches/${dispatchId}/insitu`, data)
       .then((r) => r.data);
   },
 };

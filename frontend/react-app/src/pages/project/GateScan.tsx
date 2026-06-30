@@ -7,10 +7,11 @@ import { Navigate, useParams } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ScanLine, Truck, CheckCircle, XCircle } from 'lucide-react';
+import { ScanLine, Truck, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../hooks/useAuth';
 import { useProject } from '../../components/layout/ProjectLayout';
@@ -21,11 +22,18 @@ import type { GateTruckView, TruckStatus } from '../../types/master';
 import './GateScan.css';
 
 const TRUCK_VARIANT: Record<TruckStatus, 'pass' | 'fail' | 'warn' | 'info' | 'pending'> = {
-  PENDING: 'pending', FILLED: 'info', ARRIVED: 'warn', ACCEPTED: 'pass', REJECTED: 'fail',
+  PENDING: 'pending', FILLED: 'info', ARRIVED: 'warn', PENDING_QE: 'warn', ACCEPTED: 'pass', REJECTED: 'fail',
 };
 const TRUCK_LABEL: Record<TruckStatus, string> = {
-  PENDING: 'Awaiting truck', FILLED: 'Filled at plant', ARRIVED: 'At gate', ACCEPTED: 'Accepted', REJECTED: 'Rejected',
+  PENDING: 'Awaiting truck', FILLED: 'Filled at plant', ARRIVED: 'At gate',
+  PENDING_QE: 'Awaiting QE sign-off', ACCEPTED: 'Accepted', REJECTED: 'Rejected',
 };
+const ACTION_REASONS = [
+  { value: 'GRADE_MISMATCH', label: 'Grade mismatch' },
+  { value: 'SLUMP_MISMATCH', label: 'Slump mismatch' },
+  { value: 'VOLUME_MISMATCH', label: 'Volume mismatch' },
+  { value: 'OTHER', label: 'Other' },
+] as const;
 
 const row = (label: string, value: React.ReactNode) => (
   <div className="qms-td-row">
@@ -54,6 +62,8 @@ const schema = z.object({
   token: z.string().min(1, 'Enter a dispatch token'),
   slump_at_site_mm: z.string(),
   rejection_reason: z.string(),
+  action_reason: z.enum(['GRADE_MISMATCH', 'SLUMP_MISMATCH', 'VOLUME_MISMATCH', 'OTHER']),
+  action_message: z.string(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -65,6 +75,7 @@ export const GateScan: React.FC = () => {
 
   const [view, setView] = useState<GateTruckView | null>(null);
   const [showReject, setShowReject] = useState(false);
+  const [showAction, setShowAction] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,10 +84,14 @@ export const GateScan: React.FC = () => {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { token: '', slump_at_site_mm: '', rejection_reason: '' },
+    defaultValues: {
+      token: '', slump_at_site_mm: '', rejection_reason: '',
+      action_reason: 'SLUMP_MISMATCH', action_message: '',
+    },
   });
   const tokenValue = useWatch({ control, name: 'token' });
   const rejectReason = useWatch({ control, name: 'rejection_reason' });
+  const actionMessage = useWatch({ control, name: 'action_message' });
 
   // Gate scanning is done by the Supervisor.
   if (user && user.role !== 'SUPERVISOR') {
@@ -98,7 +113,7 @@ export const GateScan: React.FC = () => {
   const lookup = (v: FormValues) => run(() => dispatchesApi.gateLookup(pid, v.token.trim()));
 
   const scanNext = () => {
-    setView(null); setShowReject(false); setError(null); resetForm();
+    setView(null); setShowReject(false); setShowAction(false); setError(null); resetForm();
   };
 
   const t = view?.truck;
@@ -170,16 +185,41 @@ export const GateScan: React.FC = () => {
             </Card>
           )}
 
-          {t?.status === 'ARRIVED' && !showReject && (
-            <div className="qms-form-actions">
-              <Button variant="outline" icon={<XCircle size={16} />} style={{ flex: 1 }} disabled={busy} onClick={() => setShowReject(true)}>
-                Reject
+          {t?.status === 'ARRIVED' && !showReject && !showAction && (
+            <>
+              <div className="qms-form-actions">
+                <Button variant="outline" icon={<XCircle size={16} />} style={{ flex: 1 }} disabled={busy} onClick={() => setShowReject(true)}>
+                  Reject
+                </Button>
+                <Button variant="primary" icon={<CheckCircle size={16} />} style={{ flex: 2 }} disabled={busy}
+                  onClick={() => run(() => dispatchesApi.gateAccept(pid, t.token))}>
+                  {busy ? 'Saving…' : 'Admit (QE in-situ next)'}
+                </Button>
+              </div>
+              <Button variant="ghost" fullWidth icon={<AlertTriangle size={16} />} disabled={busy}
+                onClick={() => setShowAction(true)} style={{ marginTop: 8 }}>
+                Flag a mismatch for the QE
               </Button>
-              <Button variant="primary" icon={<CheckCircle size={16} />} style={{ flex: 2 }} disabled={busy}
-                onClick={() => run(() => dispatchesApi.gateAccept(pid, t.token))}>
-                {busy ? 'Saving…' : 'Accept delivery'}
-              </Button>
-            </div>
+            </>
+          )}
+
+          {t?.status === 'ARRIVED' && showAction && (
+            <Card className="qms-form-section">
+              <Select label="Mismatch type" {...register('action_reason')}
+                options={ACTION_REASONS.map((r) => ({ label: r.label, value: r.value }))} />
+              <Input label="What's the issue?" required placeholder="e.g. Challan says M25 but pour needs M30"
+                {...register('action_message')} />
+              <div className="qms-form-actions" style={{ marginTop: 12 }}>
+                <Button type="button" variant="outline" style={{ flex: 1 }} onClick={() => setShowAction(false)}>Back</Button>
+                <Button variant="primary" style={{ flex: 2 }} disabled={busy || !actionMessage.trim()}
+                  onClick={() => run(() => dispatchesApi.gateActionRequired(pid, t.token, {
+                    reason: getValues('action_reason'),
+                    message: getValues('action_message').trim(),
+                  }))}>
+                  {busy ? 'Sending…' : 'Send to QE'}
+                </Button>
+              </div>
+            </Card>
           )}
 
           {t?.status === 'ARRIVED' && showReject && (
@@ -202,6 +242,17 @@ export const GateScan: React.FC = () => {
                 <strong>{t.status === 'ACCEPTED' ? 'Entry allowed' : 'Delivery rejected'}</strong>
                 {t.rejection_reason && <div>{t.rejection_reason}</div>}
                 <div>The supplier has been notified.</div>
+              </div>
+            </div>
+          )}
+
+          {t?.status === 'PENDING_QE' && (
+            <div className="qms-alert-box">
+              <CheckCircle size={18} />
+              <div>
+                <strong>Admitted — awaiting QE sign-off.</strong>
+                <div>The quality engineer runs the in-situ slump test before this
+                delivery is finally accepted and credited to the pour.</div>
               </div>
             </div>
           )}

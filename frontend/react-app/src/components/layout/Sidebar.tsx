@@ -21,8 +21,10 @@ import {
   Layers,
   Building2,
   FlaskConical,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useQEInboxCount } from '../../queries/qeInbox';
 import { initials, roleLabel } from '../../lib/initials';
 import './Sidebar.css';
 
@@ -43,6 +45,10 @@ export const Sidebar: React.FC = () => {
   // Operational actions are role-specific.
   const isQualityEngineer = user?.role === 'QUALITY_ENGINEER';
   const isSupervisor = user?.role === 'SUPERVISOR';
+
+  // QE in-situ inbox badge (PENDING_QE deliveries), polled.
+  const { data: inbox } = useQEInboxCount(Number(rawId), inProject && isQualityEngineer);
+  const inboxCount = inbox?.count ?? 0;
 
   const handleLogout = async () => {
     await logout();
@@ -90,6 +96,12 @@ export const Sidebar: React.FC = () => {
           )}
           {isQualityEngineer && (
             <NavLink to={`${base}/cube`} className={item}><TestTube size={18} /> Cube tests</NavLink>
+          )}
+          {isQualityEngineer && (
+            <NavLink to={`${base}/qe-inbox`} className={item}>
+              <ClipboardCheck size={18} /> In-situ inbox
+              {inboxCount > 0 && <span className="qms-nav-badge">{inboxCount}</span>}
+            </NavLink>
           )}
           <NavLink to={`${base}/trace`} className={item}><LinkIcon size={18} /> Traceability</NavLink>
           {isSupervisor && (

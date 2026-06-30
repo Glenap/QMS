@@ -37,6 +37,7 @@ import { ProjectPours } from './pages/project/ProjectPours';
 import { ProjectDispatches } from './pages/project/ProjectDispatches';
 import { ProjectCubeTests } from './pages/project/ProjectCubeTests';
 import { GateScan } from './pages/project/GateScan';
+import { QEInbox } from './pages/project/QEInbox';
 import { NCRDashboard } from './pages/project/NCRDashboard';
 import { Chatbot } from './pages/project/Chatbot';
 
@@ -76,6 +77,7 @@ function App() {
               <Route path="dispatches" element={<ProjectDispatches />} />
               <Route path="cube" element={<ProjectCubeTests />} />
               <Route path="gate" element={<GateScan />} />
+              <Route path="qe-inbox" element={<QEInbox />} />
               <Route path="ncr" element={<NCRDashboard />} />
               <Route path="chatbot" element={<Chatbot />} />
               <Route path="team" element={<ProjectTeam />} />

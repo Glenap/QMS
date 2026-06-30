@@ -1,7 +1,62 @@
 // RMC dispatch + gate scan (truck token flow).
 
 // app.models.transaction.TruckStatus
-export type TruckStatus = 'PENDING' | 'FILLED' | 'ARRIVED' | 'ACCEPTED' | 'REJECTED';
+export type TruckStatus =
+  | 'PENDING' | 'FILLED' | 'ARRIVED' | 'PENDING_QE' | 'ACCEPTED' | 'REJECTED';
+
+// Phase 4B mismatch action items + QE in-situ slump gate.
+export type ActionReason = 'GRADE_MISMATCH' | 'SLUMP_MISMATCH' | 'VOLUME_MISMATCH' | 'OTHER';
+export type ActionResolution = 'APPROVED' | 'REJECTED';
+export type InsituResult = 'PASS' | 'FAIL';
+
+export interface ActionRequired {
+  reason: ActionReason;
+  message: string;
+}
+
+export interface ActionItemResponse {
+  action_item_id: number;
+  project_id: number;
+  dispatch_id: number;
+  reason: ActionReason;
+  message: string;
+  status: 'OPEN' | 'RESOLVED';
+  resolution: ActionResolution | null;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface InsituSubmit {
+  measured_slump_mm: number;
+  decision: ActionResolution;
+  rejection_reason?: string | null;
+  notes?: string | null;
+}
+
+export interface InsituTestInfo {
+  measured_slump_mm: number;
+  target_slump_mm: string | null;
+  result: InsituResult;
+  notes: string | null;
+  tested_at: string;
+}
+
+export interface QEReviewItem {
+  dispatch_id: number;
+  token: string;
+  supplier_name: string | null;
+  grade_name: string | null;
+  target_slump_mm: string | null;
+  slump_at_site_mm: number | null;
+  volume_cum: number | null;
+  pour_reference: string | null;
+  action_item: ActionItemResponse | null;
+  created_at: string;
+}
+
+export interface QEInboxCount {
+  count: number;
+}
 
 export interface DispatchCreate {
   pour_id: number;
@@ -83,6 +138,8 @@ export interface GateTruckView {
   dispatch_time: string | null;
   transit_minutes: number | null;
   placement_window_minutes: number | null;
+  target_slump_mm: string | null;
+  insitu: InsituTestInfo | null;
   truck: TruckInfo;
 }
 

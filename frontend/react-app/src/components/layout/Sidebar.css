@@ -164,3 +164,18 @@
 .qms-settings-icon:hover {
   color: var(--gray-700);
 }
+
+.qms-nav-badge {
+  margin-left: auto;
+  background: #DC2626;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
