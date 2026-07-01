@@ -275,4 +275,63 @@ class NCREmbedding(Base):
     )
 
 
+class AlertLevel(str, enum.Enum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    CRITICAL = "CRITICAL"
+
+
+class AlertStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+
+
+class Alert(Base):
+    """An IS-456/10262 quality alert for the QE + PM: a strength result that
+    failed the individual criterion, a moving-average drifting below the
+    acceptance floor, or a downward trend. Feeds the alert bell/feed."""
+
+    __tablename__ = "alerts"
+    __table_args__ = (
+        Index("idx_alerts_project_status", "project_id", "status"),
+        {"schema": "quality"},
+    )
+
+    alert_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=False
+    )
+    level: Mapped[AlertLevel] = mapped_column(
+        SAEnum(AlertLevel, schema="quality"), nullable=False
+    )
+    # STRENGTH_INDIVIDUAL / STRENGTH_GROUP / TREND — kept as a string so new
+    # categories don't need a DB enum migration.
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    sample_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("transaction.cube_samples.sample_id"), nullable=True
+    )
+    pour_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("transaction.pours.pour_id"), nullable=True
+    )
+    supplier_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.suppliers.supplier_id"), nullable=True
+    )
+    status: Mapped[AlertStatus] = mapped_column(
+        SAEnum(AlertStatus, schema="quality"),
+        nullable=False,
+        default=AlertStatus.OPEN,
+    )
+    acknowledged_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 from app.models.transaction import CubeSample  # noqa: E402

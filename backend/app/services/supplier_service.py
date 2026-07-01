@@ -13,13 +13,14 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.email import send_supplier_confirmation_email
+from app.core.email import send_rmc_issue_email, send_supplier_confirmation_email
 from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.core.security import create_invitation_token
 from app.models.auth import User
 from app.models.master import Document, Project, Supplier
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.supplier_repo import SupplierRepository
+from app.schemas.alert import RmcNotify
 from app.schemas.master import (
     ConfirmationResult,
     SupplierConfirmationView,
@@ -139,6 +140,29 @@ class SupplierService:
             token=supplier.confirmation_token,
         )
         return await self._to_response(supplier)
+
+    async def notify_issue(
+        self, project: Project, supplier_id: int, data: RmcNotify, user: User
+    ) -> None:
+        """Email an RMC supplier about a quality issue (QE/PM-composed)."""
+        supplier = await self.repo.get_by(Supplier.supplier_id == supplier_id)
+        if not supplier or supplier.project_id != project.project_id:
+            raise NotFoundError("Supplier")
+        if not supplier.contact_email:
+            raise PermissionDeniedError("This supplier has no contact email to send to")
+        try:
+            await send_rmc_issue_email(
+                supplier_email=supplier.contact_email,
+                supplier_name=supplier.supplier_name,
+                project_name=project.project_name,
+                subject=data.subject,
+                message=data.message,
+                sender_name=user.full_name,
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort email
+            logger.warning(
+                "RMC issue email to %s failed (%s).", supplier.contact_email, exc
+            )
 
     async def set_blocked(
         self,

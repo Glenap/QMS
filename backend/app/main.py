@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import (
     ai_suggestions,
+    alerts,
     analytics,
     auth,
     catalog,
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(ncrs.router, prefix=settings.API_V1_PREFIX)
     app.include_router(ai_suggestions.router, prefix=settings.API_V1_PREFIX)
     app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(alerts.router, prefix=settings.API_V1_PREFIX)
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
     app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
     app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)

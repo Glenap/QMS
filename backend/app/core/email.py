@@ -183,6 +183,31 @@ async def send_mix_design_request_email(
     await fastmail.send_message(message)
 
 
+async def send_rmc_issue_email(
+    supplier_email: str,
+    supplier_name: str,
+    project_name: str,
+    subject: str,
+    message: str,
+    sender_name: str,
+) -> None:
+    """A QE/PM emails an RMC supplier about a quality issue (drifting strength,
+    NCR, plant review)."""
+    html_body = _render_template("rmc_issue.html", {
+        "supplier_name": supplier_name,
+        "project_name": project_name,
+        "message": message,
+        "sender_name": sender_name,
+    })
+    msg = MessageSchema(
+        subject=f"[{project_name}] {subject}",
+        recipients=[supplier_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await fastmail.send_message(msg)
+
+
 async def send_lab_confirmation_email(
     lab_email: str,
     lab_name: str,

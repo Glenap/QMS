@@ -25,6 +25,7 @@ from app.models.master import (
 from app.models.quality import (
     NCR,
     AISuggestion,
+    Alert,
     CorrectiveAction,
     CubeTest,
     NCREmbedding,
@@ -49,5 +50,6 @@ __all__ = [
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
     "ActionItem", "InsituTest",
     "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion", "NCREmbedding",
+    "Alert",
     "IngestionLog", "Embedding",
 ]

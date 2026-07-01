@@ -62,3 +62,32 @@ class TestTargetMeanStrength:
 
     def test_target_mean_with_explicit_sigma(self):
         assert quality_engine.target_mean_strength(30, 4.0) == round(30 + 1.65 * 4.0, 2)
+
+
+class TestAcceptanceCriteria:
+    def test_individual_ok_at_fck_minus_3(self):
+        assert quality_engine.individual_ok(27, 30) is True
+        assert quality_engine.individual_ok(26.9, 30) is False
+
+    def test_group_min_mean_takes_the_greater(self):
+        # M30 assumed σ=5 → max(30+3, 30+0.825*5=34.125) ≈ 34.12
+        assert quality_engine.group_min_mean(30) == 34.12
+        # small σ → the flat fck+3 dominates
+        assert quality_engine.group_min_mean(30, 2.0) == 33.0
+
+    def test_individual_failure_is_critical(self):
+        level, cat, _ = quality_engine.evaluate_strength_alert(26.0, 30, [26.0])
+        assert level == "CRITICAL"
+        assert cat == "STRENGTH_INDIVIDUAL"
+
+    def test_group_average_drift_is_warning(self):
+        # each ≥ 27 (individual OK) but the 4-sample mean 28.25 < 34.125.
+        res = quality_engine.evaluate_strength_alert(28.0, 30, [28.0, 29.0, 28.0, 28.0])
+        assert res is not None and res[0] == "WARNING" and res[1] == "STRENGTH_GROUP"
+
+    def test_below_characteristic_is_trend_warning(self):
+        res = quality_engine.evaluate_strength_alert(29.0, 30, [29.0])
+        assert res is not None and res[1] == "TREND"
+
+    def test_healthy_result_has_no_alert(self):
+        assert quality_engine.evaluate_strength_alert(35.0, 30, [35.0, 36.0, 34.0, 35.0]) is None

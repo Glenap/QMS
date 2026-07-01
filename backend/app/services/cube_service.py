@@ -68,6 +68,7 @@ from app.schemas.quality import (
     CubeSampleResponse,
     CubeTestResponse,
 )
+from app.services.alert_service import AlertService
 
 logger = logging.getLogger(__name__)
 
@@ -332,6 +333,10 @@ class CubeService:
         if _should_raise_ncr(result, data.test_age_days):
             await self._raise_ncr(test, pour)
             ncr_raised = True
+
+        # IS-456/10262 alert for the QE + PM (individual/group/trend), independent
+        # of the auto-NCR — a passing individual can still drift the group average.
+        await AlertService(self.session).evaluate_on_test(test, pour)
 
         return LabReportResult(
             test_age_days=data.test_age_days,

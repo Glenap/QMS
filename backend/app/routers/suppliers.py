@@ -14,6 +14,7 @@ from app.core.project_access import ensure_can_manage_contractor_side, require_p
 from app.database.session import get_db
 from app.models.auth import User, UserRole
 from app.models.master import Project
+from app.schemas.alert import RmcNotify
 from app.schemas.master import (
     BlockRequest,
     MixDesignResponse,
@@ -40,6 +41,14 @@ def ensure_can_block(user: User) -> None:
     if user.role not in _BLOCKER_ROLES:
         raise PermissionDeniedError(
             "Only a quality engineer, project manager, or contractor can block/unblock"
+        )
+
+
+def ensure_qe_or_pm(user: User) -> None:
+    """Quality alerts + the RMC-issue email are for the QE and project manager."""
+    if user.role not in (UserRole.QUALITY_ENGINEER, UserRole.PROJECT_MANAGER):
+        raise PermissionDeniedError(
+            "Only a quality engineer or project manager can do this"
         )
 
 
@@ -161,3 +170,16 @@ async def unblock_supplier(
     return await SupplierService(db).set_blocked(
         project, supplier_id, current_user, blocked=False
     )
+
+
+@router.post("/{project_id}/suppliers/{supplier_id}/notify", status_code=204)
+async def notify_supplier(
+    supplier_id: int,
+    data: RmcNotify,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """QE/PM emails the RMC about a quality issue."""
+    ensure_qe_or_pm(current_user)
+    await SupplierService(db).notify_issue(project, supplier_id, data, current_user)
