@@ -43,11 +43,18 @@ export const Analytics: React.FC = () => {
     label: s.sample_reference ?? `Sample #${s.sample_id}`, value: s.sample_id,
   }));
 
-  const firstGrade = String(grades[0]?.grade_id ?? '');
-  const firstTower = String(towers[0]?.tower_id ?? '');
-  const firstSample = String(samples[0]?.sample_id ?? '');
+  // Default every chart to the freshest data — the most recently cast batch that
+  // already has lab results (samples come back cast-date-descending) — mapping its
+  // grade/tower names back to ids. Falls back to the first option otherwise.
+  const recent = samples.find((s) => s.tests.length > 0) ?? samples[0];
+  const recentGradeId = recent ? grades.find((g) => g.grade_name === recent.grade_name)?.grade_id : undefined;
+  const recentTowerId = recent ? towers.find((t) => t.tower_name === recent.tower_name)?.tower_id : undefined;
 
-  // ── Per-chart filter state (each defaults to the first concrete option) ──
+  const firstGrade = String(recentGradeId ?? grades[0]?.grade_id ?? '');
+  const firstTower = String(recentTowerId ?? towers[0]?.tower_id ?? '');
+  const firstSample = String(recent?.sample_id ?? '');
+
+  // ── Per-chart filter state (each defaults to the most recent data) ──
   const [rG, setRG] = useState(''); const [rT, setRT] = useState('');
   const [rFrom, setRFrom] = useState(''); const [rTo, setRTo] = useState('');
   const [dG, setDG] = useState(''); const [dT, setDT] = useState('');
