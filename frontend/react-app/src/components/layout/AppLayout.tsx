@@ -15,6 +15,7 @@ const SEGMENT_TITLES: Record<string, string> = {
   documents: 'Documents',
   trace: 'Traceability',
   'qe-inbox': 'In-situ Inbox',
+  alerts: 'Quality Alerts',
   gate: 'Gate Scan',
   ncr: 'NCR',
   chatbot: 'Strata Assistant',

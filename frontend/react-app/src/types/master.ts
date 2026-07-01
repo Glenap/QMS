@@ -20,3 +20,4 @@ export * from './ncr';
 export * from './ai';
 export * from './analytics';
 export * from './traceability';
+export * from './alert';
