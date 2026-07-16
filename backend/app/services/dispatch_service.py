@@ -9,7 +9,8 @@ Lifecycle of one truck:
 
 The QE raises the dispatch (which generates the token + emails the supplier);
 the site SUPERVISOR works the gate end. A dispatch is 1:1 with a truck token and
-is scoped to a project through its pour (PourDispatchLink → Pour).
+carries its own ``project_id`` — it exists before any pour, and the pour that
+records the delivery is created from the accepted truck.
 """
 
 import logging
@@ -23,6 +24,8 @@ from app.config import settings
 from app.core.email import send_truck_dispatch_email, send_truck_result_email
 from app.core.exceptions import (
     EntityBlockedError,
+    EntityNotApprovedError,
+    GradeNotApprovedError,
     NotFoundError,
     PermissionDeniedError,
     TruckStateError,
@@ -36,15 +39,11 @@ from app.models.transaction import (
     ActionResolution,
     InsituResult,
     InsituTest,
-    Pour,
-    PourDispatchLink,
-    PourStatus,
     RMCDispatch,
     TruckDispatch,
     TruckStatus,
 )
 from app.repositories.dispatch_repo import DispatchRepository, TruckRepository
-from app.repositories.pour_repo import PourRepository
 from app.schemas.transaction import (
     ActionItemResponse,
     ActionRequired,
@@ -86,7 +85,6 @@ class DispatchService:
         self.session = session
         self.repo = DispatchRepository(session)
         self.trucks = TruckRepository(session)
-        self.pours = PourRepository(session)
 
     # ── QE: raise a dispatch ────────────────────────────────────────────────
 
@@ -95,15 +93,13 @@ class DispatchService:
     ) -> DispatchResponse:
         pid = project.project_id
 
-        pour = await self.pours.get_in_project(data.pour_id, pid)
-        if not pour:
-            raise NotFoundError("Pour")
-
         supplier = await self.session.get(Supplier, data.supplier_id)
         if not supplier or supplier.project_id != pid:
             raise NotFoundError("Supplier")
         if supplier.is_blocked:
             raise EntityBlockedError("supplier", supplier.block_reason)
+        if supplier.approval_status not in ("NOT_REQUIRED", "ACCEPTED"):
+            raise EntityNotApprovedError("supplier")
         if not supplier.contact_email:
             raise PermissionDeniedError(
                 "This supplier has no contact email — confirm the supplier "
@@ -112,9 +108,13 @@ class DispatchService:
 
         if not await self.session.get(Grade, data.grade_id):
             raise NotFoundError("Grade")
+        # Only a grade with an approved mix design on the project may be
+        # dispatched — the mix is the contract for what gets batched.
+        await self._ensure_grade_has_approved_mix(data.grade_id, pid)
 
         dispatch = await self.repo.add(
             RMCDispatch(
+                project_id=pid,
                 supplier_id=data.supplier_id,
                 grade_id=data.grade_id,
                 volume_ordered_cum=data.volume_ordered_cum,
@@ -122,9 +122,6 @@ class DispatchService:
                 is_complete=False,
                 created_by=user.user_id,
             )
-        )
-        self.session.add(
-            PourDispatchLink(pour_id=pour.pour_id, dispatch_id=dispatch.dispatch_id)
         )
 
         token = create_invitation_token()
@@ -150,7 +147,22 @@ class DispatchService:
             volume_ordered=data.volume_ordered_cum,
             token=token,
         )
-        return await self._dispatch_response(dispatch, pour_id=pour.pour_id, truck=truck)
+        return await self._dispatch_response(dispatch, pour_id=None, truck=truck)
+
+    async def _ensure_grade_has_approved_mix(
+        self, grade_id: int, project_id: int
+    ) -> None:
+        res = await self.session.execute(
+            select(MixDesign.mix_design_id)
+            .where(
+                MixDesign.project_id == project_id,
+                MixDesign.grade_id == grade_id,
+                MixDesign.approval_status == MixApprovalStatus.APPROVED,
+            )
+            .limit(1)
+        )
+        if res.scalar_one_or_none() is None:
+            raise GradeNotApprovedError()
 
     async def list_for_project(
         self, project: Project, pour_id: int | None = None
@@ -361,7 +373,6 @@ class DispatchService:
             dispatch.volume_remaining_cum = max(ordered - received, 0)
             dispatch.is_complete = received >= ordered
             await self.session.flush()
-            await self._apply_pour_progress(dispatch_id)
             await self._notify_result(project, dispatch, truck, "ACCEPTED")
         else:
             truck.status = TruckStatus.REJECTED
@@ -387,8 +398,6 @@ class DispatchService:
                 continue
             supplier = await self.session.get(Supplier, dispatch.supplier_id)
             grade = await self.session.get(Grade, dispatch.grade_id)
-            pour_id = await self.repo.pour_id_for(dispatch.dispatch_id)
-            pour = await self.session.get(Pour, pour_id) if pour_id else None
             items.append(
                 QEReviewItem(
                     dispatch_id=dispatch.dispatch_id,
@@ -398,7 +407,9 @@ class DispatchService:
                     target_slump_mm=await self._target_slump(dispatch),
                     slump_at_site_mm=dispatch.slump_at_site_mm,
                     volume_cum=truck.volume_cum,
-                    pour_reference=pour.pour_reference if pour else None,
+                    # The pour is recorded only after acceptance, so a delivery
+                    # awaiting the QE has no pour reference yet.
+                    pour_reference=None,
                     action_item=await self._open_action_item(dispatch.dispatch_id),
                     created_at=truck.arrived_at or truck.filled_at or dispatch.created_at,
                 )
@@ -409,10 +420,8 @@ class DispatchService:
         res = await self.session.execute(
             select(TruckDispatch.dispatch_token_id)
             .join(RMCDispatch, RMCDispatch.dispatch_id == TruckDispatch.dispatch_id)
-            .join(PourDispatchLink, PourDispatchLink.dispatch_id == RMCDispatch.dispatch_id)
-            .join(Pour, Pour.pour_id == PourDispatchLink.pour_id)
             .where(
-                Pour.project_id == project.project_id,
+                RMCDispatch.project_id == project.project_id,
                 TruckDispatch.status == TruckStatus.PENDING_QE,
             )
         )
@@ -434,27 +443,6 @@ class DispatchService:
         return await self._gate_view(project, dispatch, truck)
 
     # ── Internals ───────────────────────────────────────────────────────────
-
-    async def _apply_pour_progress(self, dispatch_id: int) -> None:
-        """Roll the just-accepted delivery up to its pour: mark it IN_PROGRESS on
-        the first delivery and auto-COMPLETE once the planned volume is delivered.
-        A short delivery (e.g. a slump rejection) leaves the pour open for the QE."""
-        pour_id = await self.repo.pour_id_for(dispatch_id)
-        if pour_id is None:
-            return
-        pour = await self.session.get(Pour, pour_id)
-        if not pour or pour.status == PourStatus.COMPLETED:
-            return
-
-        delivered = await self.repo.delivered_for_pour(pour_id)
-        planned = float(pour.volume_cum) if pour.volume_cum is not None else None
-        if planned is not None and delivered + 0.01 >= planned:
-            pour.status = PourStatus.COMPLETED
-            pour.completed_at = datetime.now(UTC)
-            pour.volume_actual_cum = delivered
-        elif pour.status == PourStatus.PLANNED:
-            pour.status = PourStatus.IN_PROGRESS
-        await self.session.flush()
 
     async def _target_slump(self, dispatch: RMCDispatch) -> str | None:
         """The slump range from the APPROVED mix design for this delivery's
@@ -568,13 +556,10 @@ class DispatchService:
         return truck, dispatch
 
     async def _project_for_dispatch(self, dispatch_id: int) -> Project | None:
-        pour_id = await self.repo.pour_id_for(dispatch_id)
-        if pour_id is None:
+        dispatch = await self.session.get(RMCDispatch, dispatch_id)
+        if not dispatch:
             return None
-        pour = await self.session.get(Pour, pour_id)
-        if not pour:
-            return None
-        return await self.session.get(Project, pour.project_id)
+        return await self.session.get(Project, dispatch.project_id)
 
     async def _notify_result(
         self, project: Project, dispatch: RMCDispatch, truck: TruckDispatch, status: str

@@ -10,13 +10,20 @@ the registration.
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.email import send_rmc_issue_email, send_supplier_confirmation_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    NoAcceptedContractorError,
+    NotFoundError,
+    PermissionDeniedError,
+    TruckStateError,
+)
+from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Document, Project, Supplier
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.supplier_repo import SupplierRepository
@@ -26,6 +33,7 @@ from app.schemas.master import (
     SupplierConfirmationView,
     SupplierConfirmSubmit,
     SupplierCreate,
+    SupplierDirectoryItem,
     SupplierResponse,
 )
 
@@ -86,11 +94,28 @@ class SupplierService:
         await self._validate_mix_design_document(
             data.mix_design_document_id, project.project_id
         )
+        # When the client registers (project.registration_by == CLIENT), the RMC
+        # is attached to the project's accepted contractor and starts PENDING
+        # their approval. Otherwise the contractor registers it themselves.
+        if project.registration_by == "CLIENT":
+            contractors = await contractor_org_ids(
+                self.session, project.project_id, accepted_only=True
+            )
+            if not contractors:
+                raise NoAcceptedContractorError()
+            contractor_org_id = sorted(contractors)[0]
+            registered_by, approval_status = "CLIENT", "PENDING"
+        else:
+            contractor_org_id = user.org_id
+            registered_by, approval_status = "CONTRACTOR", "NOT_REQUIRED"
+
         token = create_invitation_token()
         sent_at = datetime.now(UTC) if data.contact_email else None
         supplier = Supplier(
-            contractor_org_id=user.org_id,
+            contractor_org_id=contractor_org_id,
             project_id=project.project_id,
+            registered_by=registered_by,
+            approval_status=approval_status,
             status="PENDING",
             confirmation_token=token,
             confirmation_sent_at=sent_at,
@@ -115,6 +140,38 @@ class SupplierService:
             order_by=Supplier.created_at.desc(),
         )
         return [await self._to_response(s) for s in suppliers]
+
+    async def list_for_org(self, user: User) -> list[SupplierDirectoryItem]:
+        """Every RMC visible to the caller's organisation, across projects. A
+        client org sees all RMCs registered on its projects (and which contractor
+        holds each); a contractor org sees the RMCs it holds. Read-only."""
+        stmt = select(Supplier, Project.project_name).join(
+            Project, Project.project_id == Supplier.project_id, isouter=True
+        )
+        if user.role in (UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER):
+            stmt = stmt.where(Project.org_id == user.org_id)
+        else:
+            stmt = stmt.where(Supplier.contractor_org_id == user.org_id)
+        rows = (
+            await self.session.execute(stmt.order_by(Supplier.created_at.desc()))
+        ).all()
+        return [
+            SupplierDirectoryItem(
+                supplier_id=s.supplier_id,
+                supplier_name=s.supplier_name,
+                project_id=s.project_id,
+                project_name=project_name,
+                contractor_org_id=s.contractor_org_id,
+                contractor_org_name=await self._org_name(s.contractor_org_id),
+                contact_email=s.contact_email,
+                plant_location=s.plant_location,
+                status=s.status,
+                approval_status=s.approval_status,
+                registered_by=s.registered_by,
+                is_blocked=s.is_blocked,
+            )
+            for s, project_name in rows
+        ]
 
     async def resend_confirmation(
         self, project: Project, supplier_id: int, user: User
@@ -181,6 +238,29 @@ class SupplierService:
         supplier.block_reason = reason if blocked else None
         supplier.blocked_by = user.user_id if blocked else None
         supplier.blocked_at = datetime.now(UTC) if blocked else None
+        await self.session.flush()
+        return await self._to_response(supplier)
+
+    async def set_approval(
+        self,
+        project: Project,
+        supplier_id: int,
+        user: User,
+        *,
+        accepted: bool,
+        reason: str | None = None,
+    ) -> SupplierResponse:
+        """The contractor accepts / rejects a client-registered RMC. Only makes
+        sense for client-registered ones (contractor-registered need no approval)."""
+        supplier = await self.repo.get_by(Supplier.supplier_id == supplier_id)
+        if not supplier or supplier.project_id != project.project_id:
+            raise NotFoundError("Supplier")
+        if supplier.registered_by != "CLIENT":
+            raise TruckStateError(
+                "This RMC was registered by the contractor and needs no approval"
+            )
+        supplier.approval_status = "ACCEPTED" if accepted else "REJECTED"
+        supplier.approval_reason = None if accepted else reason
         await self.session.flush()
         return await self._to_response(supplier)
 

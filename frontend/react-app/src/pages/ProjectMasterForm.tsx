@@ -52,6 +52,7 @@ const schema = z.object({
   no_of_basements: z.string(),
   max_floors: z.string(),
   status: z.string(),
+  registration_by: z.enum(['CONTRACTOR', 'CLIENT']),
   // D · Towers
   towers: z.array(towerSchema),
   // E · Quality parameters
@@ -95,6 +96,7 @@ const DEFAULTS: FormValues = {
   no_of_basements: '',
   max_floors: '',
   status: 'ACTIVE',
+  registration_by: 'CONTRACTOR',
   towers: [{ ...EMPTY_TOWER }],
   min_cube_samples: '',
   acceptance_criteria: 'IS 456:2000',
@@ -199,6 +201,7 @@ export const ProjectMasterForm: React.FC = () => {
       project_type: v.project_type ? (v.project_type as ProjectType) : undefined,
       project_code: str(v.project_code),
       status: v.status as ProjectStatus,
+      registration_by: v.registration_by,
       gst_number: str(v.gst_number),
       address_line1: str(v.address_line1),
       address_line2: str(v.address_line2),
@@ -278,6 +281,11 @@ export const ProjectMasterForm: React.FC = () => {
 
           <Input label="GST Number" placeholder="27AABCG1234A1Z5" {...register('gst_number')} />
           <Input label="Project Code / RERA" placeholder="P51700049510" {...register('project_code')} />
+
+          <Select label="RMC & labs registered by" {...register('registration_by')} options={[
+            { label: 'Contractor (default)', value: 'CONTRACTOR' },
+            { label: 'Client — you register, contractor approves', value: 'CLIENT' },
+          ]} />
         </div>
       </Card>
 

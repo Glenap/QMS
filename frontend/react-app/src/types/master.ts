@@ -9,6 +9,7 @@ export * from './project';
 export * from './confirmation';
 export * from './supplier';
 export * from './lab';
+export * from './directory';
 export * from './catalog';
 export * from './floor';
 export * from './mix';

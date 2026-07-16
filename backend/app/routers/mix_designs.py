@@ -9,22 +9,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import PermissionDeniedError
-from app.core.project_access import require_project
+from app.core.project_access import require_project, require_project_role
 from app.database.session import get_db
-from app.models.auth import User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.master import GradeResponse, MixDesignResponse, MixDesignReview
 from app.services.mixdesign_service import MixDesignService
 
 router = APIRouter(prefix="/projects", tags=["mix-designs"])
 
-
-def _ensure_quality_engineer(user: User) -> None:
-    if user.role != UserRole.QUALITY_ENGINEER:
-        raise PermissionDeniedError(
-            "Only a quality engineer can review mix designs"
-        )
 
 
 @router.get("/{project_id}/mix-designs", response_model=list[MixDesignResponse])
@@ -54,12 +47,11 @@ async def list_approved_grades(
 async def review_mix_design(
     mix_design_id: int,
     data: MixDesignReview,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """QE decision on a submitted mix design: APPROVE / REJECT(+reason) / IN_PROGRESS."""
-    _ensure_quality_engineer(current_user)
     return await MixDesignService(db).review(
         project, mix_design_id, data, current_user
     )

@@ -7,7 +7,9 @@ from app.models.auth import OrgInvitation
 from tests.helpers import (
     API,
     accept_and_verify,
+    assign_member,
     bearer,
+    onboard_member,
     register_and_token,
     sample_project_payload,
 )
@@ -58,35 +60,39 @@ class TestProjectVisibility:
 
 
 class TestClientMembership:
-    async def test_invite_new_client_user_to_project(self, client, db_session):
+    async def test_assign_existing_team_member_to_project(self, client, db_session):
         owner_token, project_id = await _make_project(client)
         email = "client.user@example.com"
 
-        resp = await client.post(
-            f"{API}/projects/{project_id}/members",
-            json={"email": email, "project_role": "CLIENT_LEAD"},
-            headers=bearer(owner_token),
+        # Team-building is up front: onboard to the org (no designation), then
+        # assign a per-project designation.
+        user_token = await onboard_member(
+            client, db_session, admin_token=owner_token,
+            email=email, full_name="Cara Client", org_role="CLIENT_USER",
+        )
+        resp = await assign_member(
+            client, admin_token=owner_token, project_id=project_id,
+            email=email, project_role="CLIENT_LEAD",
         )
         assert resp.status_code == 201, resp.text
-        assert resp.json()["status"] == "INVITED"
+        assert resp.json()["status"] == "ACTIVE"
 
-        members = await client.get(
-            f"{API}/projects/{project_id}/members", headers=bearer(owner_token)
-        )
-        assert any(
-            m["email"] == email and m["status"] == "INVITED" for m in members.json()
-        )
-
-        # Accept + verify → active member who can see + manage the project.
-        token = await _invitation_token(db_session, email)
-        user_token, _ = await accept_and_verify(client, token=token, email=email)
-
+        # Now a member who can see + manage the project.
         listed = await client.get(f"{API}/projects", headers=bearer(user_token))
         assert [p["project_id"] for p in listed.json()] == [project_id]
         detail = await client.get(
             f"{API}/projects/{project_id}", headers=bearer(user_token)
         )
         assert detail.json()["access"]["can_manage_client_side"] is True
+
+    async def test_assigning_non_member_is_rejected(self, client, db_session):
+        owner_token, project_id = await _make_project(client)
+        # Someone who isn't on the org team yet can't be assigned to a project.
+        resp = await assign_member(
+            client, admin_token=owner_token, project_id=project_id,
+            email="stranger@example.com", project_role="CLIENT_LEAD",
+        )
+        assert resp.status_code == 400
 
 
 class TestContractorSide:
@@ -133,23 +139,26 @@ class TestContractorSide:
         assert lab.status_code == 201, lab.text
         assert lab.json()["project_id"] == project_id
 
-        # Contractor admin assigns a contractor lead (invite new).
-        lead_email = "lead@example.com"
-        r = await client.post(
-            f"{API}/projects/{project_id}/members",
-            json={"email": lead_email, "project_role": "CONTRACTOR_LEAD"},
-            headers=bearer(ctr_token),
+        # Contractor admin onboards + assigns a contractor lead.
+        lead_token = await onboard_member(
+            client, db_session, admin_token=ctr_token,
+            email="lead@example.com", full_name="Leo Lead",
+        )
+        r = await assign_member(
+            client, admin_token=ctr_token, project_id=project_id,
+            email="lead@example.com", project_role="CONTRACTOR_LEAD",
         )
         assert r.status_code == 201, r.text
-        lead_token, _ = await accept_and_verify(
-            client, token=await _invitation_token(db_session, lead_email), email=lead_email
-        )
 
-        # The lead can assign a PM and register a supplier.
-        pm = await client.post(
-            f"{API}/projects/{project_id}/members",
-            json={"email": "pm@example.com", "project_role": "PROJECT_MANAGER"},
-            headers=bearer(lead_token),
+        # The admin adds a PM to the team; the lead then assigns them + registers
+        # a supplier (contractor-side management rights).
+        await onboard_member(
+            client, db_session, admin_token=ctr_token,
+            email="pm@example.com", full_name="Pam PM",
+        )
+        pm = await assign_member(
+            client, admin_token=lead_token, project_id=project_id,
+            email="pm@example.com", project_role="PROJECT_MANAGER",
         )
         assert pm.status_code == 201, pm.text
         sup = await client.post(

@@ -10,12 +10,20 @@ gate on every delivery:
 
 from tests.helpers import API, approve_mix_design, bearer
 from tests.integration.test_phase3_dispatch_flow import (
+    _create_pour,
     _dispatch_refs,
     _fill_truck,
-    _pour_view,
     _project_with_qe_and_supervisor,
     _raise_dispatch,
 )
+
+
+async def _dispatch_view(client, qe_token, pid, dispatch_id):
+    return (
+        await client.get(
+            f"{API}/projects/{pid}/dispatches/{dispatch_id}", headers=bearer(qe_token)
+        )
+    ).json()
 
 
 async def _arrive_and_admit(client, sup_token, pid, token):
@@ -57,9 +65,9 @@ class TestProvisionalAcceptance:
             )
         ).json()
         assert count["count"] == 1
-        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
-        assert pour["volume_delivered_cum"] == 0.0
-        assert pour["status"] == "PLANNED"
+        # Nothing is credited to the dispatch until the QE signs off.
+        dispatch = await _dispatch_view(client, qe_token, pid, did)
+        assert dispatch["volume_received_cum"] in (None, 0, 0.0)
 
 
 class TestInsituGate:
@@ -76,11 +84,15 @@ class TestInsituGate:
         assert accepted.json()["truck"]["status"] == "ACCEPTED"
         assert accepted.json()["insitu"]["result"] == "PASS"
 
-        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        # The delivery is credited on the dispatch, and a pour can now be recorded
+        # from it with the delivered volume.
+        dispatch = await _dispatch_view(client, qe_token, pid, did)
+        assert dispatch["volume_received_cum"] == 30.0
+        pour = (await _create_pour(client, qe_token, pid, did, refs)).json()
         assert pour["status"] == "COMPLETED"
-        assert pour["volume_delivered_cum"] == 30.0
+        assert pour["volume_cum"] == 30.0
 
-    async def test_insitu_reject_frees_volume(self, client, db_session):
+    async def test_insitu_reject_leaves_nothing_credited(self, client, db_session):
         _, qe_token, sup_token, pid, refs, did, token = await _setup(client, db_session)
         await _arrive_and_admit(client, sup_token, pid, token)
 
@@ -94,9 +106,11 @@ class TestInsituGate:
             headers=bearer(qe_token),
         )
         assert rejected.json()["truck"]["status"] == "REJECTED"
-        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
-        assert pour["status"] == "PLANNED"
-        assert pour["volume_remaining_cum"] == 30.0
+        dispatch = await _dispatch_view(client, qe_token, pid, did)
+        assert dispatch["volume_received_cum"] in (None, 0, 0.0)
+        # A rejected delivery can't be turned into a pour.
+        resp = await _create_pour(client, qe_token, pid, did, refs)
+        assert resp.status_code == 400
 
     async def test_slump_fail_blocks_approval(self, client, db_session):
         contractor_token, qe_token, sup_token, pid, refs, did, token = await _setup(

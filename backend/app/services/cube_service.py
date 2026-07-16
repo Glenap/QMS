@@ -27,6 +27,7 @@ from app.core.date_rules import ensure_not_after
 from app.core.email import send_lab_report_request_email
 from app.core.exceptions import (
     EntityBlockedError,
+    EntityNotApprovedError,
     LabReportStateError,
     NotFoundError,
     UnsupportedFileTypeError,
@@ -452,6 +453,8 @@ class CubeService:
             raise NotFoundError("Lab")
         if lab.is_blocked:
             raise EntityBlockedError("lab", lab.block_reason)
+        if lab.approval_status not in ("NOT_REQUIRED", "ACCEPTED"):
+            raise EntityNotApprovedError("lab")
 
     async def _threshold_for(
         self, grade_id: int, test_age_days: int

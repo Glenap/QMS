@@ -33,3 +33,14 @@ export const useSetLabBlocked = (pid: number) => {
     onSuccess: () => qc.invalidateQueries({ queryKey: labKeys.list(pid) }),
   });
 };
+
+export const useReviewLab = (pid: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { labId: number; accept: boolean; reason?: string }) =>
+      vars.accept
+        ? labsApi.approve(pid, vars.labId)
+        : labsApi.reject(pid, vars.labId, vars.reason),
+    onSuccess: () => qc.invalidateQueries({ queryKey: labKeys.list(pid) }),
+  });
+};

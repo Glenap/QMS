@@ -3,7 +3,6 @@ import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { CastSampleForm } from '../../components/cube/CastSampleForm';
 import { CubeSampleList } from '../../components/cube/CubeSampleList';
@@ -12,9 +11,8 @@ import '../../components/cube/cube.css';
 
 export const ProjectCubeTests: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const samplesQuery = useCubeSamples(pid);
   const poursQuery = usePours(pid);
@@ -26,19 +24,13 @@ export const ProjectCubeTests: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-page-header-block">
-        <div>
-          <h2 className="qms-section-heading-plain">Cube tests</h2>
-          <p className="qms-page-subtitle">
-            Cube samples cast from pours and their IS 456 strength results
-          </p>
-        </div>
-        {isQE && (
+      {isQE && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setShowCast((s) => !s)}>
             Cast sample
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load cube tests.')}</ErrorBox>}
 

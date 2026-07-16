@@ -2,6 +2,9 @@
 
 import type { ConfirmationStatus } from './confirmation';
 
+// Contractor approval of a client-registered RMC/lab (see Project.registration_by).
+export type ApprovalStatus = 'NOT_REQUIRED' | 'PENDING' | 'ACCEPTED' | 'REJECTED';
+
 export interface SupplierCreate {
   supplier_name: string;
   plant_name?: string | null;
@@ -39,6 +42,9 @@ export interface SupplierResponse {
   confirmed_at: string | null;
   is_blocked: boolean;
   block_reason: string | null;
+  registered_by: 'CONTRACTOR' | 'CLIENT';
+  approval_status: ApprovalStatus;
+  approval_reason: string | null;
   mix_design_document_id: number | null;
   mix_design_document_name: string | null;
   mix_submission_token: string | null;

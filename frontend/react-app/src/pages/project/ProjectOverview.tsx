@@ -7,9 +7,16 @@ import {
 import { Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
-import { Input } from '../../components/ui/Input';
+import { Badge } from '../../components/ui/Badge';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { KpiStrip } from '../../components/analytics/KpiStrip';
+import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
+import { presetRange, type DatePreset } from '../../components/analytics/dateRange';
 import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
+import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useUpdateProjectStatus } from '../../queries/projects';
 import { useProjectMembers } from '../../queries/team';
 import { useProjectContractors } from '../../queries/contractors';
 import { useSuppliers } from '../../queries/suppliers';
@@ -19,18 +26,46 @@ import {
 } from '../../queries/analytics';
 import { useProjectTowers } from '../../queries/floors';
 import { useGrades } from '../../queries/catalog';
-import type { QualityFilters } from '../../types/master';
+import type { ProjectStatus, QualityFilters } from '../../types/master';
 import '../Dashboard.css';
 import './ProjectOverview.css';
 
 const fmtNum = (n: number | null | undefined): string => (n == null ? '—' : n.toLocaleString());
 const fmtPct = (n: number | null | undefined): string => (n == null ? '—' : `${n}%`);
 
+const STATUS_META: Record<ProjectStatus, { variant: 'pass' | 'warn' | 'info'; label: string }> = {
+  ACTIVE: { variant: 'info', label: 'Active' },
+  ON_HOLD: { variant: 'warn', label: 'On hold' },
+  COMPLETED: { variant: 'pass', label: 'Completed' },
+};
+
 export const ProjectOverview: React.FC = () => {
   const { project } = useProject();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
   const isClient = project.access.side === 'CLIENT';
+  const isOwner = user?.role === 'CLIENT_ADMIN' && isClient;
+
+  const setStatus = useUpdateProjectStatus(pid);
+  const confirm = useConfirm();
+
+  const changeStatus = async (status: ProjectStatus) => {
+    if (status === project.status) return;
+    if (status === 'COMPLETED' && !(await confirm({
+      title: 'Complete this project?',
+      description: 'Its team members will be freed to join other projects. Data and analytics stay available.',
+      confirmLabel: 'Complete project',
+    }))) {
+      return;
+    }
+    try {
+      await setStatus.mutateAsync(status);
+      toast.success(`Project marked ${STATUS_META[status].label.toLowerCase()}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Unable to update the project status.'));
+    }
+  };
 
   const { data: members = [] } = useProjectMembers(pid);
   const { data: contractors = [] } = useProjectContractors(pid, isClient);
@@ -40,16 +75,25 @@ export const ProjectOverview: React.FC = () => {
   // whole-project as the headline summary).
   const [towerId, setTowerId] = useState('ALL');
   const [gradeId, setGradeId] = useState('ALL');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [contractorId, setContractorId] = useState('ALL');
+  const [preset, setPreset] = useState<DatePreset>('7');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const filters = useMemo<QualityFilters>(() => {
     const f: QualityFilters = {};
     if (towerId !== 'ALL') f.tower_id = Number(towerId);
     if (gradeId !== 'ALL') f.grade_id = Number(gradeId);
-    if (dateFrom) f.date_from = dateFrom;
-    if (dateTo) f.date_to = dateTo;
+    if (contractorId !== 'ALL') f.contractor_id = Number(contractorId);
+    const range = presetRange(preset, customFrom, customTo);
+    if (range.date_from) f.date_from = range.date_from;
+    if (range.date_to) f.date_to = range.date_to;
     return f;
-  }, [towerId, gradeId, dateFrom, dateTo]);
+  }, [towerId, gradeId, contractorId, preset, customFrom, customTo]);
+
+  // Contractor filter options — accepted contractors only (client-side view).
+  const contractorOpts = contractors
+    .filter((c) => c.status === 'ACCEPTED')
+    .map((c) => ({ label: c.contractor_org_name, value: c.contractor_org_id }));
 
   const { data: towers = [] } = useProjectTowers(pid);
   const { data: grades = [] } = useGrades();
@@ -92,16 +136,13 @@ export const ProjectOverview: React.FC = () => {
     [ncrBySupplier],
   );
 
-  // The overall-data KPI strip (whole project). The Analytics page shows the
-  // same strip, but filtered by tower / grade / date.
+  // Whole-project headline KPIs — a simple, at-a-glance summary (not filtered).
+  // "Total Failures" = fail + critical results; "Open" = NCRs not yet closed.
   const failures = kpis ? kpis.fail_count + kpis.critical_count : null;
   const kpiItems = [
     { label: 'Total Pours', value: fmtNum(kpis?.pour_count) },
     { label: 'Overall Pass Rate', value: fmtPct(kpis?.pass_rate_pct), color: 'var(--green)' },
-    { label: 'Avg. Strength', value: kpis?.avg_strength_mpa != null ? `${kpis.avg_strength_mpa} MPa` : '—' },
     { label: 'Total Failures', value: failures != null ? String(failures) : '—', color: 'var(--red)' },
-    { label: 'Critical Failures', value: kpis ? String(kpis.critical_count) : '—', color: 'var(--amber)' },
-    // "Open" = not yet closed (open + under review), matching the Analytics strip.
     { label: 'Open NCRs', value: kpis ? String(kpis.ncr_open + kpis.ncr_under_review) : '—' },
   ];
 
@@ -116,6 +157,27 @@ export const ProjectOverview: React.FC = () => {
 
   return (
     <div className="qms-dashboard">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 6 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="qms-text-sm text-muted">Project status</span>
+          <Badge variant={STATUS_META[project.status].variant}>{STATUS_META[project.status].label}</Badge>
+        </div>
+        {isOwner && (
+          <Select
+            fullWidth={false}
+            aria-label="Project status"
+            value={project.status}
+            disabled={setStatus.isPending}
+            onChange={(e) => changeStatus(e.target.value as ProjectStatus)}
+            options={[
+              { label: 'Active', value: 'ACTIVE' },
+              { label: 'On hold', value: 'ON_HOLD' },
+              { label: 'Completed (frees team)', value: 'COMPLETED' },
+            ]}
+          />
+        )}
+      </div>
+
       <div className="qms-kpi-grid">
         {quickLinks.map((q) => (
           <Card
@@ -146,8 +208,12 @@ export const ProjectOverview: React.FC = () => {
           options={[{ label: 'All towers', value: 'ALL' }, ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id }))]} />
         <Select label="Grade" fullWidth={false} value={gradeId} onChange={(e) => setGradeId(e.target.value)}
           options={[{ label: 'All grades', value: 'ALL' }, ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id }))]} />
-        <Input label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} fullWidth={false} />
-        <Input label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} fullWidth={false} />
+        {contractorOpts.length > 0 && (
+          <Select label="Contractor" fullWidth={false} value={contractorId} onChange={(e) => setContractorId(e.target.value)}
+            options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
+        )}
+        <DateRangeFilter preset={preset} from={customFrom} to={customTo}
+          onPreset={setPreset} onFrom={setCustomFrom} onTo={setCustomTo} />
       </div>
 
       <div className="qms-dashboard-charts">

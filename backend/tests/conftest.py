@@ -196,6 +196,12 @@ async def client(connection, monkeypatch) -> AsyncClient:
     monkeypatch.setattr(
         "app.services.supplier_service.send_rmc_issue_email", _no_email
     )
+    monkeypatch.setattr(
+        "app.services.ncr_service.send_ncr_report_email", _no_email
+    )
+    monkeypatch.setattr(
+        "app.services.membership_service.send_project_assignment_email", _no_email
+    )
 
     async def _override_get_db():
         # Mirror production get_db: commit on success, rollback on error. Here

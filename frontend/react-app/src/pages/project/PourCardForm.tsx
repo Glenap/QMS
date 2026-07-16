@@ -1,8 +1,9 @@
-// Raise a pour card — captures the pour identification, grade, supplier and
-// planned volume, then creates a PLANNED pour (QUALITY_ENGINEER only).
+// Record a pour from an accepted delivery — grade, supplier and volume come from
+// the dispatch; the QE supplies the placement location + metadata. One delivery
+// yields one pour (QUALITY_ENGINEER only).
 
 import React, { useEffect, useMemo } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,8 +18,7 @@ import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useProjectTowers, useFloors } from '../../queries/floors';
 import { useComponents } from '../../queries/catalog';
-import { useApprovedGrades } from '../../queries/mixDesigns';
-import { useSuppliers } from '../../queries/suppliers';
+import { useDispatches } from '../../queries/dispatches';
 import { useCreatePour } from '../../queries/pours';
 
 const COMPONENT_LABEL: Record<string, string> = {
@@ -30,26 +30,32 @@ const schema = z.object({
   tower_id: z.string().min(1, 'Select a tower'),
   floor_id: z.string().min(1, 'Select a floor'),
   component_id: z.string().min(1, 'Select a component'),
-  grade_id: z.string().min(1, 'Select a grade'),
-  supplier_horizontal_id: z.string().min(1, 'Select a supplier'),
   pour_date: z.string().min(1, 'Pick a pour date'),
   pour_reference: z.string(),
-  volume_cum: z.string(),
   sub_contractor_name: z.string(),
 });
 type FormValues = z.infer<typeof schema>;
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 export const PourCardForm: React.FC = () => {
   const { user } = useAuth();
   const { project } = useProject();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const pid = project.project_id;
+
+  const dispatchId = Number(searchParams.get('dispatch')) || null;
+  const { data: dispatches = [], isPending: dispatchesLoading } = useDispatches(pid);
+  // The pour records this accepted delivery; grade/supplier/volume come from it.
+  const dispatch = useMemo(
+    () => dispatches.find((d) => d.dispatch_id === dispatchId) ?? null,
+    [dispatches, dispatchId],
+  );
+  const eligible = dispatch?.truck?.status === 'ACCEPTED' && dispatch.pour_id == null;
 
   const { data: towers = [], error: towersError } = useProjectTowers(pid);
   const { data: components = [] } = useComponents();
-  // Only grades with an APPROVED mix design may be poured (backend enforces this too).
-  const { data: grades = [] } = useApprovedGrades(pid);
-  const { data: suppliers = [] } = useSuppliers(pid);
   const createPour = useCreatePour(pid);
 
   const {
@@ -57,8 +63,8 @@ export const PourCardForm: React.FC = () => {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      tower_id: '', floor_id: '', component_id: '', grade_id: '',
-      supplier_horizontal_id: '', pour_date: '', pour_reference: '', volume_cum: '', sub_contractor_name: '',
+      tower_id: '', floor_id: '', component_id: '',
+      pour_date: today(), pour_reference: '', sub_contractor_name: '',
     },
   });
 
@@ -82,28 +88,44 @@ export const PourCardForm: React.FC = () => {
   // Reset the floor whenever the tower changes (floors are tower-scoped).
   useEffect(() => { setValue('floor_id', ''); }, [towerId, setValue]);
 
-  // Pour cards are raised by the Quality Engineer only.
+  // Pours are recorded by the Quality Engineer only.
   if (user && user.role !== 'QUALITY_ENGINEER') {
     return <Navigate to={`/app/projects/${pid}`} replace />;
   }
 
+  if (!dispatchId || (!dispatchesLoading && !eligible)) {
+    return (
+      <Card className="qms-form-section">
+        <h3 className="qms-section-heading">Record a pour</h3>
+        <p className="qms-page-subtitle">
+          A pour is recorded from an <strong>accepted delivery</strong>. Open the
+          Dispatches page and use “Record pour” on an accepted truck.
+        </p>
+        <div className="qms-form-actions">
+          <Button variant="primary" onClick={() => navigate(`/app/projects/${pid}/dispatches`)}>
+            Go to dispatches
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
   const onSubmit = async (v: FormValues) => {
+    if (!dispatch) return;
     try {
       await createPour.mutateAsync({
+        dispatch_id: dispatch.dispatch_id,
         tower_id: Number(v.tower_id),
         floor_id: Number(v.floor_id),
         component_id: Number(v.component_id),
-        grade_id: Number(v.grade_id),
-        supplier_horizontal_id: Number(v.supplier_horizontal_id),
         pour_date: v.pour_date,
         pour_reference: v.pour_reference.trim() || null,
-        volume_cum: v.volume_cum.trim() ? Number(v.volume_cum) : null,
         sub_contractor_name: v.sub_contractor_name.trim() || null,
       });
-      toast.success('Pour card created.');
+      toast.success('Pour recorded.');
       navigate(`/app/projects/${pid}/pours`);
     } catch (err) {
-      toast.error(getApiErrorMessage(err, 'Unable to create pour.'));
+      toast.error(getApiErrorMessage(err, 'Unable to record pour.'));
     }
   };
 
@@ -112,7 +134,23 @@ export const PourCardForm: React.FC = () => {
       {towersError && <ErrorBox>{getApiErrorMessage(towersError, 'Unable to load reference data.')}</ErrorBox>}
 
       <Card className="qms-form-section">
-        <h3 className="qms-section-heading">A · Pour identification</h3>
+        <h3 className="qms-section-heading">Delivery</h3>
+        <div className="qms-grid-3">
+          <Input label="Grade" value={dispatch?.grade_name ?? '—'} disabled />
+          <Input label="RMC supplier" value={dispatch?.supplier_name ?? '—'} disabled />
+          <Input
+            label="Volume delivered (m³)"
+            value={dispatch?.volume_received_cum != null ? String(dispatch.volume_received_cum) : '—'}
+            disabled
+          />
+        </div>
+        <p className="qms-text-sm text-muted qms-mt-8">
+          Grade, supplier and volume are taken from the accepted delivery.
+        </p>
+      </Card>
+
+      <Card className="qms-form-section">
+        <h3 className="qms-section-heading">Placement location</h3>
         <div className="qms-grid-3">
           <Select
             label="Tower"
@@ -141,38 +179,20 @@ export const PourCardForm: React.FC = () => {
       </Card>
 
       <Card className="qms-form-section">
-        <h3 className="qms-section-heading">B · Concrete & supply</h3>
+        <h3 className="qms-section-heading">Pour details</h3>
         <div className="qms-grid-3">
-          <Select label="Grade" required error={errors.grade_id?.message} {...register('grade_id')} options={[
-            { label: grades.length ? 'Select grade…' : 'No approved mix designs — approve one in Mix designs', value: '' },
-            ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id })),
-          ]} />
-          <Select label="RMC supplier" required error={errors.supplier_horizontal_id?.message} {...register('supplier_horizontal_id')} options={[
-            { label: suppliers.length ? 'Select supplier…' : 'No suppliers yet', value: '' },
-            ...suppliers.filter((s) => !s.is_blocked).map((s) => ({ label: s.supplier_name, value: s.supplier_id })),
-          ]} />
+          <Input label="Pour date" type="date" required error={errors.pour_date?.message} {...register('pour_date')} />
+          <Input label="Pour reference" placeholder="e.g. PC-T1-5F-001" {...register('pour_reference')} />
           <Input label="Sub-contractor" placeholder="Optional" {...register('sub_contractor_name')} />
         </div>
       </Card>
 
-      <Card className="qms-form-section">
-        <h3 className="qms-section-heading">C · Pour details</h3>
-        <div className="qms-grid-3">
-          <Input label="Pour date" type="date" required error={errors.pour_date?.message} {...register('pour_date')} />
-          <Input label="Pour reference" placeholder="e.g. PC-T1-5F-001" {...register('pour_reference')} />
-          <Input label="Planned volume (m³)" type="number" step="0.1" {...register('volume_cum')} />
-        </div>
-        <p className="qms-text-sm text-muted qms-mt-8">
-          Pre-pour checklist, per-truck logging and cube sampling are added in later phases.
-        </p>
-      </Card>
-
       <div className="qms-form-actions">
-        <Button type="button" variant="outline" className="qms-flex-1" onClick={() => navigate(`/app/projects/${pid}/pours`)}>
+        <Button type="button" variant="outline" className="qms-flex-1" onClick={() => navigate(`/app/projects/${pid}/dispatches`)}>
           Cancel
         </Button>
         <Button type="submit" variant="primary" className="qms-flex-2" disabled={createPour.isPending}>
-          {createPour.isPending ? 'Creating…' : 'Create pour card'}
+          {createPour.isPending ? 'Recording…' : 'Record pour'}
         </Button>
       </div>
     </form>

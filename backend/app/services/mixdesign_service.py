@@ -19,6 +19,7 @@ from app.core.date_rules import ensure_not_after
 from app.core.email import send_mix_design_request_email
 from app.core.exceptions import (
     EntityBlockedError,
+    EntityNotApprovedError,
     FileTooLargeError,
     NotFoundError,
     PermissionDeniedError,
@@ -122,6 +123,8 @@ class MixDesignService:
         supplier = await self._supplier_in_project(project, supplier_id)
         if supplier.is_blocked:
             raise EntityBlockedError("supplier", supplier.block_reason)
+        if supplier.approval_status not in ("NOT_REQUIRED", "ACCEPTED"):
+            raise EntityNotApprovedError("supplier")
 
         wanted: set[int] = set()
         if grade_ids:

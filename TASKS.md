@@ -10,10 +10,11 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
       master.ts` (~870 LOC) and `backend/app/schemas/master.py` (~430 LOC) bundle
       every domain; every phase churns them. Split into per-domain modules
       (projects, pours, cube, ncr, analytics, …). Biggest churn-reducer.
-- [ ] **Shared project-role dependency.** `_ensure_quality_engineer` is duplicated
-      in `routers/{ncrs,cube_tests,ai_suggestions}.py`. Extract a
-      `require_project_role(...)` dependency (mirror the `require_role` factory in
-      `core/dependencies.py`) and delete the copies.
+- [x] **Shared project-role dependency.** Done — added `require_project_role(*roles)`
+      to `core/project_access.py` (mirrors `require_role`; returns the project +
+      enforces the designation) and converted the inline
+      `await ensure_project_role(...)` calls in all 9 project-scoped routers to the
+      dependency.
 - [ ] **Break up the fat page components.** `pages/NCRDashboard.tsx` (~610 LOC)
       holds the list + detail panel + AI section inline; `LandingPage.tsx` (~760).
       Extract reusable pieces into `src/components/` (which is currently nearly

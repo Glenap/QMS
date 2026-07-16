@@ -62,11 +62,13 @@ async def suppliers(
     date_to: date | None = None,
     grade_id: int | None = None,
     tower_id: int | None = None,
+    contractor_id: int | None = None,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
 ):
     return await AnalyticsService(db).suppliers(
-        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id,
+        tower_id=tower_id, contractor_id=contractor_id,
     )
 
 
@@ -79,11 +81,13 @@ async def ncrs_by_supplier(
     date_to: date | None = None,
     grade_id: int | None = None,
     tower_id: int | None = None,
+    contractor_id: int | None = None,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
 ):
     return await AnalyticsService(db).ncrs_by_supplier(
-        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id,
+        tower_id=tower_id, contractor_id=contractor_id,
     )
 
 
@@ -96,11 +100,13 @@ async def run_chart(
     date_to: date | None = None,
     grade_id: int | None = None,
     tower_id: int | None = None,
+    contractor_id: int | None = None,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
 ):
     return await AnalyticsService(db).run_chart(
-        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id,
+        tower_id=tower_id, contractor_id=contractor_id,
     )
 
 
@@ -110,11 +116,13 @@ async def distribution(
     date_to: date | None = None,
     grade_id: int | None = None,
     tower_id: int | None = None,
+    contractor_id: int | None = None,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
 ):
     return await AnalyticsService(db).distribution(
-        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id,
+        tower_id=tower_id, contractor_id=contractor_id,
     )
 
 

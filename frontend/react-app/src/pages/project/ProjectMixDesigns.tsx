@@ -7,15 +7,13 @@ import { Card } from '../../components/ui/Card';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { MixDesignsPanel } from '../../components/mix/MixDesignsPanel';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { useMixDesigns } from '../../queries/mixDesigns';
 
 export const ProjectMixDesigns: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const canReview = user?.role === 'QUALITY_ENGINEER';
+  const canReview = project.access.project_role === 'QUALITY_ENGINEER';
 
   const { data: rows = [], isPending, error: loadError } = useMixDesigns(pid);
 

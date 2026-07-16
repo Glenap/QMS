@@ -72,13 +72,6 @@ export const ProjectStructure: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-page-header-block">
-        <div>
-          <h2 className="qms-section-heading-plain">Structure</h2>
-          <p className="qms-page-subtitle">Towers and floors — floors are required to raise pour cards.</p>
-        </div>
-      </div>
-
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load towers.')}</ErrorBox>}
 
       {isPending ? (

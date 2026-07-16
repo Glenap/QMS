@@ -102,7 +102,9 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
             {...register('lab_id')}
             options={[
               { label: 'Not assigned yet', value: '' },
-              ...labs.filter((l) => !l.is_blocked).map((l) => ({ label: l.lab_name, value: l.lab_id })),
+              ...labs
+                .filter((l) => !l.is_blocked && (l.approval_status === 'NOT_REQUIRED' || l.approval_status === 'ACCEPTED'))
+                .map((l) => ({ label: l.lab_name, value: l.lab_id })),
             ]}
           />
         </div>

@@ -9,7 +9,7 @@ walk, project scoping (unknown / other-project sample → 404), and auth.
 """
 
 from tests.helpers import API, bearer
-from tests.integration.test_phase2_pour_flow import _project_with_qe
+from tests.integration.test_phase1_master_flow import _project_with_qe
 from tests.integration.test_phase4_cube_flow import (
     _cast_sample,
     _qe_pour,

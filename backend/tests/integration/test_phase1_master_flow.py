@@ -15,7 +15,9 @@ from tests.helpers import (
     API,
     accept_and_verify,
     approve_mix_design,
+    assign_member,
     bearer,
+    onboard_member,
     register_and_token,
     sample_project_payload,
 )
@@ -59,6 +61,25 @@ async def _contractor_on_project(client, db_session) -> tuple[str, str, int]:
         f"{API}/projects/assigned/{pc_id}/accept", headers=bearer(contractor_token)
     )
     return client_token, contractor_token, project_id
+
+
+async def _project_with_qe(client, db_session) -> tuple[str, str, int]:
+    """Returns (contractor_token, qe_token, project_id) with a QE assigned.
+
+    Team-building is up front now: the contractor admin adds the person to the
+    org team (as a generic CONTRACTOR_USER), then assigns them the QE designation
+    on the project. Lives here (not with the pour tests) because pours depend on
+    deliveries — importing this from Phase 3 would cycle with the pour tests."""
+    _, contractor_token, project_id = await _contractor_on_project(client, db_session)
+    qe_token = await onboard_member(
+        client, db_session, admin_token=contractor_token,
+        email="qe@example.com", full_name="Quala Engineer",
+    )
+    await assign_member(
+        client, admin_token=contractor_token, project_id=project_id,
+        email="qe@example.com", project_role="QUALITY_ENGINEER",
+    )
+    return contractor_token, qe_token, project_id
 
 
 class TestCatalogs:

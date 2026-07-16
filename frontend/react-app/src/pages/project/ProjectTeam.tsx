@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -12,7 +12,7 @@ import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { projectRoleLabel } from '../../lib/roles';
-import { useAssignMember, useProjectMembers, useSetMemberActive } from '../../queries/team';
+import { useAssignMember, useOrgTeam, useProjectMembers, useSetMemberActive } from '../../queries/team';
 import type { ProjectMember, ProjectMemberStatus, ProjectRoleValue } from '../../types/master';
 
 const STATUS_BADGE: Record<ProjectMemberStatus, { variant: 'pass' | 'warn' | 'pending' | 'default'; label: string }> = {
@@ -29,7 +29,7 @@ export const ProjectTeam: React.FC = () => {
   const { user } = useAuth();
   const pid = project.project_id;
 
-  // Which project roles can the viewer assign (mirrors the backend rules).
+  // Which project designations can the viewer assign (mirrors the backend rules).
   const assignable: ProjectRoleValue[] = useMemo(() => {
     if (project.access.side === 'CLIENT') {
       return user?.role === 'CLIENT_ADMIN' ? ['CLIENT_LEAD'] : [];
@@ -44,9 +44,20 @@ export const ProjectTeam: React.FC = () => {
   }, [project.access, user]);
 
   const { data: members = [], isPending, error: loadError } = useProjectMembers(pid);
+  const { data: roster = [] } = useOrgTeam();
   const assign = useAssignMember(pid);
   const setActive = useSetMemberActive(pid);
   const confirm = useConfirm();
+
+  // Existing team members free to assign: active, not an org admin, not already
+  // on a project (one active project at a time), not already on this one.
+  const available = useMemo(() => {
+    const taken = new Set(members.map((m) => m.email));
+    return roster.filter(
+      (r) => r.status === 'ACTIVE' && !r.is_org_admin
+        && r.active_project_id == null && !taken.has(r.email),
+    );
+  }, [roster, members]);
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ProjectRoleValue | ''>(assignable[0] ?? '');
@@ -54,8 +65,6 @@ export const ProjectTeam: React.FC = () => {
 
   useEffect(() => { if (!role && assignable.length) setRole(assignable[0]); }, [assignable, role]);
 
-  // Org admins can offboard members of their own org/side. Mirrors the backend
-  // (POST /auth/users/{id}/deactivate requires is_org_admin + same org).
   const isOrgAdmin = user?.role === 'CLIENT_ADMIN' || project.access.is_contractor_admin;
   const canManageMember = (m: ProjectMember): boolean => {
     if (m.user_id == null || m.user_id === user?.user_id) return false;
@@ -85,14 +94,10 @@ export const ProjectTeam: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!role) return;
+    if (!role || !email) return;
     try {
-      const m = await assign.mutateAsync({ email: email.trim(), project_role: role });
-      toast.success(
-        m.status === 'INVITED'
-          ? `Invitation sent to ${m.email} as ${projectRoleLabel(role)}.`
-          : `${m.email} added as ${projectRoleLabel(role)}.`,
-      );
+      await assign.mutateAsync({ email, project_role: role });
+      toast.success(`${email} assigned as ${projectRoleLabel(role)}. They've been notified.`);
       setEmail('');
       setShowForm(false);
     } catch (err) {
@@ -108,18 +113,31 @@ export const ProjectTeam: React.FC = () => {
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain qms-mb-12">Assign a team member</h3>
           <form onSubmit={handleSubmit} className="qms-grid-2">
-            <Input label="Email" type="email" required placeholder="person@company.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Select label="Role" required value={role} onChange={(e) => setRole(e.target.value as ProjectRoleValue)}
+            <Select
+              label="Team member"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              options={[
+                { label: available.length ? 'Select a member…' : 'No available members', value: '' },
+                ...available.map((m) => ({
+                  label: `${m.full_name ?? m.email} · ${m.email}`,
+                  value: m.email,
+                })),
+              ]}
+            />
+            <Select label="Designation" required value={role} onChange={(e) => setRole(e.target.value as ProjectRoleValue)}
               options={assignable.map((r) => ({ label: projectRoleLabel(r), value: r }))} />
             <div className="qms-form-actions qms-grid-span-2">
-              <Button type="submit" variant="primary" disabled={assign.isPending} icon={<UserPlus size={16} />}>
-                {assign.isPending ? 'Assigning…' : 'Assign / Invite'}
+              <Button type="submit" variant="primary" disabled={assign.isPending || !email} icon={<UserPlus size={16} />}>
+                {assign.isPending ? 'Assigning…' : 'Assign to project'}
               </Button>
               <Button type="button" variant="ghost" disabled={assign.isPending} onClick={() => setShowForm(false)}>
                 Cancel
               </Button>
               <span className="qms-text-sm text-muted">
-                Existing company users are added directly; new emails get an invitation.
+                Only existing team members can be assigned. Add new people on the{' '}
+                <Link to="/app/team">Team</Link> page first — a member on another active project appears once it's completed.
               </span>
             </div>
           </form>
@@ -138,13 +156,13 @@ export const ProjectTeam: React.FC = () => {
         <div className="qms-table-container">
           <table className="qms-table">
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th>{isOrgAdmin && <th></th>}</tr>
+              <tr><th>Name</th><th>Email</th><th>Designation</th><th>Status</th>{isOrgAdmin && <th></th>}</tr>
             </thead>
             <tbody>
               {isPending ? (
                 <tr><td colSpan={isOrgAdmin ? 5 : 4} className="text-muted">Loading…</td></tr>
               ) : members.length === 0 ? (
-                <tr><td colSpan={isOrgAdmin ? 5 : 4} className="text-muted">No team members yet.</td></tr>
+                <tr><td colSpan={isOrgAdmin ? 5 : 4} className="text-muted">No team members assigned yet.</td></tr>
               ) : (
                 members.map((m) => {
                   const toggling = setActive.isPending && setActive.variables?.userId === m.user_id;

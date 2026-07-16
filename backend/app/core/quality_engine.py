@@ -82,27 +82,22 @@ def evaluate_strength_alert(
     recent_observed: list[float],
     std_dev: float | None = None,
 ) -> tuple[str, str, str] | None:
-    """Grade a new 28-day result against IS 456 individual + group criteria and
+    """Grade a new 28-day result against the IS 456 **group** criterion and
     return ``(level, category, message)`` for an alert, or ``None`` when it's
-    comfortably clear. ``recent_observed`` is the run of same-grade individual
-    results (most recent last), including this one.
+    clear. ``recent_observed`` is the run of same-grade individual results (most
+    recent last), including this one.
 
-    Encodes the action plan: an individual below fck−3 is a hard failure
-    (CRITICAL); an individual that passes but drags the 4-sample moving average
-    below the acceptance floor is a drift WARNING (review plant, notify RMC); an
-    individual below the characteristic strength (but above the minimum) is an
-    early trend warning to increase vigilance.
+    Quality alerts are deliberately scoped to what NCRs don't already catch. An
+    individual 28-day result below the characteristic strength (``observed <
+    fck``) always auto-raises an NCR (``cube_service._raise_ncr`` on FAIL/CRITICAL),
+    so surfacing that same individual as an alert would just duplicate the NCR.
+    The one strength signal *no* single NCR captures is the 4-sample moving
+    average drifting below the acceptance floor — a run of individually-passing
+    results that together fail the group criterion (IS 456 cl. 16). That is the
+    only case this raises.
     """
     observed = float(observed)
     fck = float(fck)
-
-    if observed < fck - INDIVIDUAL_MARGIN:
-        return (
-            "CRITICAL",
-            "STRENGTH_INDIVIDUAL",
-            f"Individual 28-day result {round(observed, 2)} MPa is below the IS 456 "
-            f"minimum of {round(fck - INDIVIDUAL_MARGIN, 2)} MPa (fck − 3).",
-        )
 
     window = [float(x) for x in recent_observed][-4:]
     if len(window) >= 4:
@@ -116,16 +111,6 @@ def evaluate_strength_alert(
                 f"acceptance floor {floor} MPa — production is drifting toward failure. "
                 "Review the RMC plant and notify them; increase testing frequency.",
             )
-
-    if observed < fck:
-        return (
-            "WARNING",
-            "TREND",
-            f"Individual 28-day result {round(observed, 2)} MPa is below the "
-            f"characteristic strength {round(fck, 2)} MPa (though within the "
-            f"{round(fck - INDIVIDUAL_MARGIN, 2)} MPa minimum). Increase vigilance on "
-            "the next deliveries.",
-        )
     return None
 
 

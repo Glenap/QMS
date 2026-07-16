@@ -10,18 +10,19 @@ Builds a single end-to-end scenario you can log into and click through:
     validation, the IS-456 quality engine and the auto-NCR all run for real:
     pours → RMC dispatch → truck fill → gate accept/reject → cube samples →
     strength tests (PASS / FAIL / CRITICAL → auto-NCR) → one NCR worked through
-    review + corrective action + penalty + close.
+    review + corrective action + NDT retest + RMC notification + close.
 
 Run from the backend/ directory:   uv run python scripts/seed_demo.py
 
-Refuses to run when ENVIRONMENT=production. Aborts (no changes) if the demo
-client already exists — wipe first with `uv run python scripts/wipe_db.py --yes`.
+**Deletes all existing data first** (every table, CASCADE) and re-seeds the
+global catalogs, so each run is a clean slate — then builds the demo above.
+Refuses to run when ENVIRONMENT=production.
 """
 
 import asyncio
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 # The summary banner contains non-ASCII (— · →); force UTF-8 so it prints on a
 # Windows cp1252 console instead of raising UnicodeEncodeError.
@@ -29,10 +30,13 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 from httpx import ASGITransport, AsyncClient, Response
-from sqlalchemy import select
+from sqlalchemy import select, text
 
+import app.models  # noqa: F401 — registers every table on Base.metadata for the wipe
 from app.config import settings
 from app.core.security import hash_password
+from app.database.base import Base
+from app.database.seed import COMPONENTS, GRADES
 from app.database.session import AsyncSessionLocal
 from app.main import app
 from app.models.auth import (
@@ -43,7 +47,7 @@ from app.models.auth import (
     User,
     UserRole,
 )
-from app.models.master import ProjectContractor
+from app.models.master import Component, Grade, ProjectContractor
 
 API = "/api/v1"
 PASSWORD = "Password123!"
@@ -74,21 +78,38 @@ PROJECT_PAYLOAD = {
 }
 
 # (tower_index, floor_index, component_type, grade_name, supplier_key, outcome,
-#  cast_date, test_date, truck) — outcome drives the observed strength relative
-# to the grade's required strength; truck is 'accept' | 'reject' | None.
+#  truck) — outcome drives the observed strength relative to the grade's required
+# strength; truck is 'accept' | 'reject' | None. Cast/test dates are computed per
+# pour inside the last 7 days (see `_pour_dates`) so the default "last 7 days"
+# analytics window shows data out of the box.
 POUR_PLAN = [
-    (0, 0, "RAFT", "M30", "s1", "PASS", "2026-05-02", "2026-05-30", "accept"),
-    (0, 1, "COLUMN", "M35", "s1", "PASS", "2026-05-06", "2026-06-03", "accept"),
-    (0, 2, "SLAB", "M30", "s2", "FAIL", "2026-05-10", "2026-06-07", "accept"),
-    (1, 0, "RAFT", "M40", "s2", "PASS", "2026-05-14", "2026-06-11", "reject"),
-    (1, 1, "BEAM", "M25", "s1", "CRITICAL", "2026-05-18", "2026-06-15", "accept"),
-    (1, 2, "COLUMN", "M35", "s2", "PASS", "2026-05-22", "2026-06-19", "accept"),
-    (0, 3, "SLAB", "M30", "s1", "PASS", "2026-06-01", "2026-06-22", None),
-    (1, 3, "SHEAR_WALL", "M40", "s2", "FAIL", "2026-06-05", "2026-06-24", "accept"),
+    (0, 0, "RAFT", "M30", "s1", "PASS", "accept"),
+    (0, 1, "COLUMN", "M35", "s1", "PASS", "accept"),
+    (0, 2, "SLAB", "M30", "s2", "FAIL", "accept"),
+    (1, 0, "RAFT", "M40", "s2", "PASS", "reject"),
+    (1, 1, "BEAM", "M25", "s1", "CRITICAL", "accept"),
+    (1, 2, "COLUMN", "M35", "s2", "PASS", "accept"),
+    (0, 3, "SLAB", "M30", "s1", "PASS", "accept"),
+    (1, 3, "SHEAR_WALL", "M40", "s2", "FAIL", "accept"),
 ]
 
 # observed = required(min_strength) * factor  →  PASS / FAIL (85–100%) / CRITICAL (<85%)
 _FACTOR = {"PASS": 1.12, "FAIL": 0.92, "CRITICAL": 0.72}
+
+TODAY = date.today()
+
+
+def _pour_dates(seq: int) -> tuple[str, str]:
+    """(cast_date, test_date) for pour #seq — both inside the last 7 days so the
+    default 'last 7 days' analytics window shows data. Test dates ascend with the
+    sequence for a readable run chart; the cast is a day earlier. Dates are kept
+    deliberately loose (the 28-day age is a separate declared field on the lab
+    report), so this just needs a valid, recent, ascending chain."""
+    test_off = max(0, 7 - seq)          # seq 1 → 6 days ago … seq 7+ → today
+    cast_off = min(7, test_off + 1)     # a day before the test, still >= today-7
+    cast = TODAY - timedelta(days=cast_off)
+    test = TODAY - timedelta(days=test_off)
+    return cast.isoformat(), test.isoformat()
 
 
 def _bearer(token: str) -> dict:
@@ -144,8 +165,10 @@ async def _create_people() -> dict:
 
         client_admin = user(client_org.org_id, CLIENT_ADMIN_EMAIL, "Anita Rao", UserRole.CLIENT_ADMIN, True)
         contractor_admin = user(contractor_org.org_id, CONTRACTOR_ADMIN_EMAIL, "Vikram Shah", UserRole.CONTRACTOR_ADMIN, True)
-        qe = user(contractor_org.org_id, QE_EMAIL, "Priya Nair", UserRole.QUALITY_ENGINEER)
-        supervisor = user(contractor_org.org_id, SUPERVISOR_EMAIL, "Ramesh Iyer", UserRole.SUPERVISOR)
+        # Team members are generic org users; their QE / Supervisor *designation*
+        # is per-project (the ProjectMember rows below), which drives capabilities.
+        qe = user(contractor_org.org_id, QE_EMAIL, "Priya Nair", UserRole.CONTRACTOR_USER)
+        supervisor = user(contractor_org.org_id, SUPERVISOR_EMAIL, "Ramesh Iyer", UserRole.CONTRACTOR_USER)
         await s.flush()
 
         ids = {
@@ -183,25 +206,27 @@ async def _link_contractor_and_members(pid: int, ids: dict) -> None:
         await s.commit()
 
 
-async def _run_truck(c, qe_tok, sup_tok, pid, *, pour_id, supplier_id, grade_id, volume, mode):
+async def _run_truck(c, qe_tok, sup_tok, pid, *, supplier_id, grade_id, volume, mode):
+    """Raise + drive one delivery. Returns the dispatch_id of an ACCEPTED delivery
+    (ready to record a pour from), or None if it was rejected at the gate."""
     created = _ok(
         await c.post(
             f"{API}/projects/{pid}/dispatches",
-            json={"pour_id": pour_id, "supplier_id": supplier_id,
-                  "grade_id": grade_id, "volume_ordered_cum": volume},
+            json={"supplier_id": supplier_id, "grade_id": grade_id,
+                  "volume_ordered_cum": volume},
             headers=_bearer(qe_tok),
         ),
         "raise dispatch",
     ).json()
-    token = created["truck"]["token"]
+    dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
     _ok(
         await c.post(
             f"{API}/external/dispatch?token={token}",
             json={
-                "vehicle_number": f"KA01AB{1000 + pour_id}",
+                "vehicle_number": f"KA01AB{1000 + dispatch_id}",
                 "driver_name": "Suresh K.",
-                "batch_number": f"BN-{pour_id:04d}",
-                "challan_number": f"CH-{pour_id:04d}",
+                "batch_number": f"BN-{dispatch_id:04d}",
+                "challan_number": f"CH-{dispatch_id:04d}",
                 "volume_cum": volume,
                 "wc_ratio_actual": 0.45,
                 "slump_at_plant_mm": 120,
@@ -218,18 +243,27 @@ async def _run_truck(c, qe_tok, sup_tok, pid, *, pour_id, supplier_id, grade_id,
             ),
             "reject truck",
         )
-    else:
-        _ok(
-            await c.post(
-                f"{API}/projects/{pid}/gate/{token}/arrive",
-                json={"slump_at_site_mm": 110}, headers=_bearer(sup_tok),
-            ),
-            "arrive truck",
-        )
-        _ok(
-            await c.post(f"{API}/projects/{pid}/gate/{token}/accept", headers=_bearer(sup_tok)),
-            "accept truck",
-        )
+        return None
+    _ok(
+        await c.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={"slump_at_site_mm": 110}, headers=_bearer(sup_tok),
+        ),
+        "arrive truck",
+    )
+    _ok(
+        await c.post(f"{API}/projects/{pid}/gate/{token}/accept", headers=_bearer(sup_tok)),
+        "accept truck",  # → PENDING_QE
+    )
+    _ok(
+        await c.post(
+            f"{API}/projects/{pid}/dispatches/{dispatch_id}/insitu",
+            json={"measured_slump_mm": 105, "decision": "APPROVED"},
+            headers=_bearer(qe_tok),
+        ),
+        "qe in-situ sign-off",  # → ACCEPTED
+    )
+    return dispatch_id
 
 
 async def _run_cube(c, qe_tok, pid, *, pour_id, grade_min, outcome, cast_date, test_date, lab_id, ref):
@@ -291,7 +325,7 @@ async def _work_one_ncr(c, qe_tok, pid) -> None:
         await c.post(
             f"{API}/projects/{pid}/ncrs/{nid}/corrective-actions",
             json={"action_description": "Recalibrate moisture probe; retrain batching crew",
-                  "due_date": "2026-07-10"},
+                  "due_date": (TODAY + timedelta(days=7)).isoformat()},
             headers=_bearer(qe_tok),
         ),
         "add corrective action",
@@ -303,14 +337,35 @@ async def _work_one_ncr(c, qe_tok, pid) -> None:
         ),
         "complete corrective action",
     )
-    _ok(
+    retest = _ok(
         await c.post(
-            f"{API}/projects/{pid}/ncrs/{nid}/penalties",
-            json={"penalty_type": "RATE_REDUCTION", "amount": 25000,
-                  "description": "5% rate reduction on the affected pour"},
+            f"{API}/projects/{pid}/ncrs/{nid}/retests",
+            json={"retest_type": "CORE_CUTTING",
+                  "notes": "Core cut from the affected slab for in-situ verification"},
             headers=_bearer(qe_tok),
         ),
-        "apply penalty",
+        "order retest",
+    ).json()
+    _ok(
+        await c.patch(
+            f"{API}/projects/{pid}/ncrs/{nid}/retests/{retest['retest_id']}",
+            json={"result": "PASS", "observed_strength_mpa": 31.2,
+                  "required_strength_mpa": 30.0, "test_date": TODAY.isoformat(),
+                  "notes": "Core strength satisfies IS 456 — no demolition required"},
+            headers=_bearer(qe_tok),
+        ),
+        "record retest result",
+    )
+    _ok(
+        await c.post(
+            f"{API}/projects/{pid}/ncrs/{nid}/notify-rmc",
+            json={"subject": "NCR raised on your supply",
+                  "message": "A 28-day strength failure was recorded on your concrete. "
+                             "Please review the batch and plant records and respond "
+                             "with corrective action."},
+            headers=_bearer(qe_tok),
+        ),
+        "notify rmc",
     )
     _ok(
         await c.patch(
@@ -321,16 +376,32 @@ async def _work_one_ncr(c, qe_tok, pid) -> None:
     )
 
 
+async def _wipe_all() -> None:
+    """Delete ALL existing data (every table, RESTART IDENTITY CASCADE) and
+    re-seed the global reference catalogs, so the demo starts from a clean slate
+    on every run. Mirrors scripts/wipe_db.py."""
+    tables = ", ".join(
+        f'"{t.schema}"."{t.name}"' for t in Base.metadata.sorted_tables
+    )
+    async with AsyncSessionLocal() as s:
+        await s.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
+        await s.execute(Grade.__table__.insert(), GRADES)
+        await s.execute(Component.__table__.insert(), COMPONENTS)
+        await s.commit()
+
+
 async def seed() -> None:
     if settings.is_production:
         print("Refusing to seed a PRODUCTION database. Aborting.")
         sys.exit(1)
 
+    print("Wiping existing data…")
+    await _wipe_all()
+
     ids = await _create_people()
     if not ids:
         print(
-            f"Demo client '{CLIENT_ADMIN_EMAIL}' already exists — nothing changed.\n"
-            "Wipe first to reseed:  uv run python scripts/wipe_db.py --yes"
+            f"Demo client '{CLIENT_ADMIN_EMAIL}' unexpectedly still exists after wipe."
         )
         return
 
@@ -443,7 +514,8 @@ async def seed() -> None:
                 )
 
         ncr_pours = 0
-        for seq, (ti, fi, comp, gname, skey, outcome, cast, test, truck) in enumerate(POUR_PLAN, 1):
+        pours_created = 0
+        for seq, (ti, fi, comp, gname, skey, outcome, truck) in enumerate(POUR_PLAN, 1):
             tower = towers[ti]
             tower_floors = floors[tower["tower_id"]]
             floor = tower_floors[min(fi, len(tower_floors) - 1)]
@@ -451,31 +523,36 @@ async def seed() -> None:
             grade = grade_by.get(gname) or fallback_grade
             supplier = suppliers[skey]
             volume = 30.0 + seq
+            cast, test = _pour_dates(seq)
+
+            # Dispatch first — the pour is recorded from the accepted delivery.
+            dispatch_id = None
+            if truck:
+                dispatch_id = await _run_truck(
+                    c, qe_tok, sup_tok, pid,
+                    supplier_id=supplier["supplier_id"], grade_id=grade["grade_id"],
+                    volume=volume, mode=truck,
+                )
+            if dispatch_id is None:
+                # A rejected (or absent) delivery leaves no pour to record.
+                continue
 
             pour = _ok(
                 await c.post(
                     f"{API}/projects/{pid}/pours",
                     json={
+                        "dispatch_id": dispatch_id,
                         "tower_id": tower["tower_id"],
                         "floor_id": floor["floor_id"],
                         "component_id": component["component_id"],
-                        "grade_id": grade["grade_id"],
-                        "supplier_horizontal_id": supplier["supplier_id"],
                         "pour_date": cast,
-                        "volume_cum": volume,
                         "pour_reference": f"PC-{tower['tower_name'].split()[-1]}-{floor['floor_label']}-{comp[:3]}-{seq:03d}",
                     },
                     headers=_bearer(qe_tok),
                 ),
-                "create pour",
+                "record pour",
             ).json()
-
-            if truck:
-                await _run_truck(
-                    c, qe_tok, sup_tok, pid,
-                    pour_id=pour["pour_id"], supplier_id=supplier["supplier_id"],
-                    grade_id=grade["grade_id"], volume=volume, mode=truck,
-                )
+            pours_created += 1
 
             await _run_cube(
                 c, qe_tok, pid,
@@ -488,7 +565,7 @@ async def seed() -> None:
 
         await _work_one_ncr(c, qe_tok, pid)
 
-        _print_summary(pid, len(POUR_PLAN), ncr_pours)
+        _print_summary(pid, pours_created, ncr_pours)
 
 
 def _print_summary(pid: int, pours: int, ncrs: int) -> None:

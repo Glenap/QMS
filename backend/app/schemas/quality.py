@@ -15,7 +15,13 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.models.quality import ActionStatus, NCRStatus, PenaltyType, ResultStatus
+from app.models.quality import (
+    ActionStatus,
+    NCRStatus,
+    ResultStatus,
+    RetestResult,
+    RetestType,
+)
 
 # ── Cube samples ─────────────────────────────────────────────────────────────
 
@@ -128,24 +134,89 @@ class CorrectiveActionResponse(BaseModel):
     created_at: datetime
 
 
-# ── Penalties (Phase 5) ──────────────────────────────────────────────────────
+# ── Retests (IS-456 in-situ verification) ────────────────────────────────────
 
 
-class PenaltyCreate(BaseModel):
-    penalty_type: PenaltyType
-    amount: float | None = None
-    description: str | None = None
+class RetestCreate(BaseModel):
+    """Order an NDT / core retest as a corrective measure on an NCR."""
+
+    retest_type: RetestType
+    notes: str | None = None
 
 
-class PenaltyResponse(BaseModel):
-    penalty_id: int
+class RetestResultUpdate(BaseModel):
+    """Record (or amend) a retest's outcome. All optional so the QE can fill it
+    in progressively; ``result`` marks it complete."""
+
+    result: RetestResult | None = None
+    test_date: date | None = None
+    observed_strength_mpa: float | None = None
+    required_strength_mpa: float | None = None
+    lab_id: int | None = None
+    report_document_id: int | None = None
+    notes: str | None = None
+
+
+class RetestResponse(BaseModel):
+    retest_id: int
     ncr_id: int
-    penalty_type: PenaltyType
-    amount: float | None = None
-    description: str | None = None
-    applied_by: int | None = None
-    applied_by_name: str | None = None
-    applied_at: datetime
+    retest_type: RetestType
+    result: RetestResult | None = None
+    test_date: date | None = None
+    observed_strength_mpa: float | None = None
+    required_strength_mpa: float | None = None
+    lab_id: int | None = None
+    lab_name: str | None = None
+    report_document_id: int | None = None
+    notes: str | None = None
+    ordered_by: int | None = None
+    ordered_by_name: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+    # Denormalised NCR context for the project-level Retests page.
+    ncr_number: str | None = None
+    grade_name: str | None = None
+
+
+# ── RMC notifications (email the plant about an NCR) ──────────────────────────
+
+
+class NcrNotifyRmc(BaseModel):
+    """A QE emails the RMC about an NCR, optionally attaching a project PDF
+    report. Blank subject/message fall back to an auto-composed body."""
+
+    subject: str | None = None
+    message: str | None = None
+    document_id: int | None = None
+
+
+class NcrRmcNotificationResponse(BaseModel):
+    notification_id: int
+    ncr_id: int
+    supplier_id: int | None = None
+    supplier_name: str | None = None
+    subject: str
+    message: str
+    report_document_id: int | None = None
+    sent_by: int | None = None
+    sent_by_name: str | None = None
+    sent_at: datetime
+
+
+# ── AI pattern insight (deterministic, cross-NCR) ────────────────────────────
+
+
+class NcrPatternResponse(BaseModel):
+    """Recurring-failure signal for an NCR's RMC + grade, computed from the
+    project's NCR data (no LLM). Powers the pattern callout in the NCR panel."""
+
+    supplier_name: str | None = None
+    grade_name: str | None = None
+    window_days: int
+    supplier_grade_ncr_count: int
+    supplier_ncr_count: int
+    recurring_low_28d_count: int
+    summary: str
 
 
 # ── NCRs ─────────────────────────────────────────────────────────────────────
@@ -186,11 +257,13 @@ class NCRResponse(BaseModel):
     # Lifecycle roll-ups for the list view (details live on NCRDetailResponse).
     corrective_action_count: int = 0
     open_action_count: int = 0
-    penalty_count: int = 0
+    retest_count: int = 0
+    open_retest_count: int = 0
 
 
 class NCRDetailResponse(NCRResponse):
-    """A single NCR with its corrective actions and penalties expanded."""
+    """A single NCR with its corrective actions, retests and RMC notifications."""
 
     corrective_actions: list[CorrectiveActionResponse] = []
-    penalties: list[PenaltyResponse] = []
+    retests: list[RetestResponse] = []
+    rmc_notifications: list[NcrRmcNotificationResponse] = []

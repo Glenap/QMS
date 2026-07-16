@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight, Gavel } from 'lucide-react';
+import { ChevronDown, ChevronRight, FlaskConical } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Card } from '../ui/Card';
 import type { NCRResponse } from '../../types/master';
@@ -67,9 +67,9 @@ export const NCRList: React.FC<NCRListProps> = ({
                       {n.corrective_action_count === 0
                         ? <span className="text-muted">—</span>
                         : <span>{n.corrective_action_count - n.open_action_count}/{n.corrective_action_count} done</span>}
-                      {n.penalty_count > 0 && (
-                        <span className="text-muted qms-ncr-penalty-tag">
-                          <Gavel size={12} /> {n.penalty_count}
+                      {n.retest_count > 0 && (
+                        <span className="text-muted qms-ncr-retest-tag" title="Retests ordered">
+                          <FlaskConical size={12} /> {n.retest_count}
                         </span>
                       )}
                     </td>

@@ -1,17 +1,22 @@
-// NCR lifecycle API — project-scoped wrappers over the Phase 5 endpoints:
-// the NCR list/detail plus root-cause/status updates, corrective actions, and
-// penalties. See backend/app/routers/ncrs.py.
+// NCR lifecycle API — project-scoped wrappers over the NCR endpoints: the NCR
+// list/detail plus root-cause/status updates, corrective actions, NDT/core
+// retests, RMC notifications, and the pattern insight. See
+// backend/app/routers/ncrs.py.
 
 import { api } from './client';
 import type {
   CorrectiveActionCreate,
   CorrectiveActionResponse,
   CorrectiveActionUpdate,
+  NcrNotifyRmc,
+  NcrPatternResponse,
+  NcrRmcNotificationResponse,
   NCRDetailResponse,
   NCRResponse,
   NCRUpdate,
-  PenaltyCreate,
-  PenaltyResponse,
+  RetestCreate,
+  RetestResponse,
+  RetestResultUpdate,
 } from '../types/master';
 
 export const ncrsApi = {
@@ -62,13 +67,56 @@ export const ncrsApi = {
       .then((r) => r.data);
   },
 
-  addPenalty(
+  // ── Retests ───────────────────────────────────────────────────────────────
+
+  orderRetest(
     projectId: number,
     ncrId: number,
-    data: PenaltyCreate,
-  ): Promise<PenaltyResponse> {
+    data: RetestCreate,
+  ): Promise<RetestResponse> {
     return api
-      .post<PenaltyResponse>(`/projects/${projectId}/ncrs/${ncrId}/penalties`, data)
+      .post<RetestResponse>(`/projects/${projectId}/ncrs/${ncrId}/retests`, data)
+      .then((r) => r.data);
+  },
+
+  recordRetestResult(
+    projectId: number,
+    ncrId: number,
+    retestId: number,
+    data: RetestResultUpdate,
+  ): Promise<RetestResponse> {
+    return api
+      .patch<RetestResponse>(
+        `/projects/${projectId}/ncrs/${ncrId}/retests/${retestId}`,
+        data,
+      )
+      .then((r) => r.data);
+  },
+
+  listRetests(projectId: number): Promise<RetestResponse[]> {
+    return api
+      .get<RetestResponse[]>(`/projects/${projectId}/retests`)
+      .then((r) => r.data);
+  },
+
+  // ── RMC notification + pattern ────────────────────────────────────────────
+
+  notifyRmc(
+    projectId: number,
+    ncrId: number,
+    data: NcrNotifyRmc,
+  ): Promise<NcrRmcNotificationResponse> {
+    return api
+      .post<NcrRmcNotificationResponse>(
+        `/projects/${projectId}/ncrs/${ncrId}/notify-rmc`,
+        data,
+      )
+      .then((r) => r.data);
+  },
+
+  pattern(projectId: number, ncrId: number): Promise<NcrPatternResponse> {
+    return api
+      .get<NcrPatternResponse>(`/projects/${projectId}/ncrs/${ncrId}/pattern`)
       .then((r) => r.data);
   },
 };

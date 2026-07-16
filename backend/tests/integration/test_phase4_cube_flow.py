@@ -17,22 +17,20 @@ import secrets
 
 from app.models.transaction import CubeSample
 from tests.helpers import API, bearer
-from tests.integration.test_phase2_pour_flow import _pour_refs, _project_with_qe
+from tests.integration.test_phase3_dispatch_flow import _accepted_delivery, _create_pour
 
 # The lab report PDF is mandatory on submission.
 _PDF = {"file": ("report.pdf", b"%PDF-1.4 demo", "application/pdf")}
 
 
 async def _qe_pour(client, db_session):
-    """(contractor_token, qe_token, project_id, pour_id)."""
-    contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
-    refs = await _pour_refs(client, db_session, contractor_token, qe_token, pid)
+    """(contractor_token, qe_token, project_id, pour_id) — a pour recorded from an
+    accepted delivery (M30, 30 m³, ref PC-001, pour_date 2026-07-15)."""
+    contractor_token, qe_token, _sup, pid, refs, dispatch_id = await _accepted_delivery(
+        client, db_session
+    )
     pour = (
-        await client.post(
-            f"{API}/projects/{pid}/pours",
-            json={**refs, "pour_date": "2026-07-15", "volume_cum": 30.0, "pour_reference": "PC-001"},
-            headers=bearer(qe_token),
-        )
+        await _create_pour(client, qe_token, pid, dispatch_id, refs)
     ).json()
     return contractor_token, qe_token, pid, pour["pour_id"]
 

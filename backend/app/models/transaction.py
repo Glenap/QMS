@@ -138,10 +138,17 @@ class RMCDispatch(Base):
     __tablename__ = "rmc_dispatches"
     __table_args__ = (
         Index("idx_rmc_supplier_date", "supplier_id", "dispatch_time"),
+        Index("idx_rmc_dispatch_project", "project_id"),
         {"schema": "transaction"},
     )
 
     dispatch_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # A dispatch is raised within a project and exists before any pour (the pour
+    # is recorded from the accepted delivery), so it carries its own project_id
+    # rather than being scoped through a pour.
+    project_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=False
+    )
     supplier_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("master.suppliers.supplier_id"), nullable=False
     )
@@ -235,10 +242,13 @@ class TruckDispatch(Base):
 
 
 class PourDispatchLink(Base):
+    """Links a pour to the delivery it records. One delivery yields at most one
+    pour, so ``dispatch_id`` is unique."""
+
     __tablename__ = "pour_dispatch_links"
     __table_args__ = (
         Index("idx_pdl_pour", "pour_id"),
-        Index("idx_pdl_dispatch", "dispatch_id"),
+        UniqueConstraint("dispatch_id", name="uq_pdl_dispatch"),
         {"schema": "transaction"},
     )
 

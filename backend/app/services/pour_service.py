@@ -1,8 +1,10 @@
 """pour_service.py — business logic for pour cards.
 
-A pour ties a location (tower→floor→component), a concrete grade, and an RMC
-supplier together for a planned concrete pour. Raised by the project's Quality
-Engineer; later phases attach truck dispatches and cube samples.
+A pour records a completed concrete placement. The QE creates it **from an
+accepted truck delivery**: grade, supplier and volume come from the delivery, and
+the QE supplies the placement location (tower→floor→component). One delivery
+yields one pour, and the pour's volume is the delivered (accepted) volume — there
+is no separate planned volume or delivery rollup.
 """
 
 from datetime import UTC, datetime
@@ -12,27 +14,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.date_rules import ensure_not_after
 from app.core.exceptions import (
-    GradeNotApprovedError,
+    DeliveryNotAcceptedError,
     NotFoundError,
     PermissionDeniedError,
-    PourAlreadyCompletedError,
+    PourAlreadyExistsError,
 )
 from app.models.auth import User
 from app.models.master import (
     Component,
     Floor,
     Grade,
-    MixApprovalStatus,
     MixDesign,
     Project,
     ProjectContractor,
     Supplier,
     Tower,
 )
-from app.models.transaction import Pour, PourStatus
-from app.repositories.dispatch_repo import DispatchRepository
+from app.models.transaction import Pour, PourDispatchLink, PourStatus, TruckStatus
+from app.repositories.dispatch_repo import DispatchRepository, TruckRepository
 from app.repositories.pour_repo import PourRepository
-from app.schemas.transaction import PourComplete, PourCreate, PourResponse
+from app.schemas.transaction import PourCreate, PourResponse
 
 
 class PourService:
@@ -40,11 +41,22 @@ class PourService:
         self.session = session
         self.repo = PourRepository(session)
         self.dispatch = DispatchRepository(session)
+        self.trucks = TruckRepository(session)
 
     async def create(
         self, data: PourCreate, project: Project, user: User
     ) -> PourResponse:
         pid = project.project_id
+
+        # The delivery this pour records: an accepted truck with no pour yet.
+        dispatch = await self.dispatch.get_in_project(data.dispatch_id, pid)
+        if not dispatch:
+            raise NotFoundError("Dispatch")
+        truck = await self.trucks.get_for_dispatch(dispatch.dispatch_id)
+        if not truck or truck.status != TruckStatus.ACCEPTED:
+            raise DeliveryNotAcceptedError()
+        if await self.dispatch.pour_id_for(dispatch.dispatch_id) is not None:
+            raise PourAlreadyExistsError()
 
         tower = await self.session.get(Tower, data.tower_id)
         if not tower or tower.project_id != pid:
@@ -57,13 +69,6 @@ class PourService:
 
         if not await self.session.get(Component, data.component_id):
             raise NotFoundError("Component")
-        if not await self.session.get(Grade, data.grade_id):
-            raise NotFoundError("Grade")
-        await self._ensure_grade_has_approved_mix(data.grade_id, pid)
-
-        supplier = await self.session.get(Supplier, data.supplier_horizontal_id)
-        if not supplier or supplier.project_id != pid:
-            raise NotFoundError("Supplier")
 
         if data.supplier_vertical_id is not None:
             sv = await self.session.get(Supplier, data.supplier_vertical_id)
@@ -85,32 +90,38 @@ class PourService:
             earlier_label="pour date", later_label="project end date",
         )
 
+        # Grade, supplier and volume are the delivery's — the volume placed is the
+        # accepted truck's load. The pour is complete the moment it's recorded.
+        volume = (
+            float(dispatch.volume_received_cum)
+            if dispatch.volume_received_cum is not None
+            else None
+        )
         pour = await self.repo.add(
             Pour(
                 project_id=pid,
+                tower_id=data.tower_id,
+                floor_id=data.floor_id,
+                component_id=data.component_id,
+                grade_id=dispatch.grade_id,
+                supplier_horizontal_id=dispatch.supplier_id,
+                supplier_vertical_id=data.supplier_vertical_id,
+                mix_design_id=data.mix_design_id,
+                pour_date=data.pour_date,
+                pour_reference=data.pour_reference,
+                volume_cum=volume,
+                volume_actual_cum=volume,
+                sub_contractor_name=data.sub_contractor_name,
+                status=PourStatus.COMPLETED,
+                completed_at=datetime.now(UTC),
                 recorded_by=user.user_id,
-                status=PourStatus.PLANNED,
-                **data.model_dump(),
             )
         )
-        return await self._to_response(pour)
-
-    async def _ensure_grade_has_approved_mix(
-        self, grade_id: int, project_id: int
-    ) -> None:
-        """A pour may only use a grade that has an APPROVED mix design on the
-        project — the mix is the contract for what gets batched."""
-        res = await self.session.execute(
-            select(MixDesign.mix_design_id)
-            .where(
-                MixDesign.project_id == project_id,
-                MixDesign.grade_id == grade_id,
-                MixDesign.approval_status == MixApprovalStatus.APPROVED,
-            )
-            .limit(1)
+        self.session.add(
+            PourDispatchLink(pour_id=pour.pour_id, dispatch_id=dispatch.dispatch_id)
         )
-        if res.scalar_one_or_none() is None:
-            raise GradeNotApprovedError()
+        await self.session.flush()
+        return await self._to_response(pour, dispatch_id=dispatch.dispatch_id)
 
     async def _ensure_tower_in_scope(
         self, tower: Tower, project: Project, user: User
@@ -139,58 +150,19 @@ class PourService:
             Pour.project_id == project.project_id,
             order_by=Pour.pour_date.desc(),
         )
-        ids = [p.pour_id for p in pours]
-        delivered = await self.dispatch.delivered_for_pours(ids)
-        outstanding = await self.dispatch.outstanding_ordered_for_pours(ids)
-        return [
-            await self._to_response(
-                p,
-                delivered=delivered.get(p.pour_id, 0.0),
-                outstanding=outstanding.get(p.pour_id, 0.0),
-            )
-            for p in pours
-        ]
+        return [await self._to_response(p) for p in pours]
 
     async def get(self, project: Project, pour_id: int) -> PourResponse:
         pour = await self.repo.get_in_project(pour_id, project.project_id)
         if not pour:
             raise NotFoundError("Pour")
-        return await self._to_response(pour, **await self._rollup(pour.pour_id))
-
-    async def complete(
-        self, project: Project, pour_id: int, data: PourComplete
-    ) -> PourResponse:
-        pour = await self.repo.get_in_project(pour_id, project.project_id)
-        if not pour:
-            raise NotFoundError("Pour")
-        if pour.status == PourStatus.COMPLETED:
-            raise PourAlreadyCompletedError()
-
-        pour.status = PourStatus.COMPLETED
-        pour.completed_at = datetime.now(UTC)
-        if data.volume_actual_cum is not None:
-            pour.volume_actual_cum = data.volume_actual_cum
-        if data.completion_notes is not None:
-            pour.completion_notes = data.completion_notes
-        await self.session.flush()
-        await self.session.refresh(pour)
-        return await self._to_response(pour, **await self._rollup(pour.pour_id))
-
-    async def _rollup(self, pour_id: int) -> dict[str, float]:
-        """delivered + outstanding-ordered for a single pour, as _to_response kwargs."""
-        delivered = await self.dispatch.delivered_for_pour(pour_id)
-        outstanding = (
-            await self.dispatch.outstanding_ordered_for_pours([pour_id])
-        ).get(pour_id, 0.0)
-        return {"delivered": delivered, "outstanding": outstanding}
+        return await self._to_response(pour)
 
     async def _to_response(
-        self,
-        pour: Pour,
-        *,
-        delivered: float = 0.0,
-        outstanding: float = 0.0,
+        self, pour: Pour, *, dispatch_id: int | None = None
     ) -> PourResponse:
+        if dispatch_id is None:
+            dispatch_id = await self.dispatch.dispatch_id_for_pour(pour.pour_id)
         # session.get hits the identity map, so repeated lookups across a list
         # don't re-query the same tower/grade/etc.
         tower = await self.session.get(Tower, pour.tower_id)
@@ -201,6 +173,7 @@ class PourService:
         return PourResponse(
             pour_id=pour.pour_id,
             project_id=pour.project_id,
+            dispatch_id=dispatch_id,
             tower_id=pour.tower_id,
             tower_name=tower.tower_name if tower else None,
             floor_id=pour.floor_id,
@@ -219,11 +192,5 @@ class PourService:
             volume_actual_cum=pour.volume_actual_cum,
             completion_notes=pour.completion_notes,
             completed_at=pour.completed_at,
-            volume_delivered_cum=delivered,
-            volume_remaining_cum=(
-                max(float(pour.volume_cum) - delivered - outstanding, 0.0)
-                if pour.volume_cum is not None
-                else None
-            ),
             created_at=pour.created_at,
         )

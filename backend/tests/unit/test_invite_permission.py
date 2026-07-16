@@ -14,34 +14,30 @@ def _user(role: UserRole) -> SimpleNamespace:
     return SimpleNamespace(role=role)
 
 
-# (inviter, target) pairs that should be allowed.
+# (inviter, target) pairs that should be allowed. Org invites are now
+# designation-less — an admin only adds generic team members; the functional
+# designation (PM/QE/Supervisor) is assigned per project.
 ALLOWED = [
     (UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER),
     (UserRole.CONTRACTOR_ADMIN, UserRole.CONTRACTOR_USER),
-    (UserRole.CONTRACTOR_ADMIN, UserRole.PROJECT_MANAGER),
-    (UserRole.CONTRACTOR_ADMIN, UserRole.SUPERVISOR),
-    (UserRole.CONTRACTOR_ADMIN, UserRole.QUALITY_ENGINEER),
-    (UserRole.CONTRACTOR_USER, UserRole.PROJECT_MANAGER),
-    (UserRole.CONTRACTOR_USER, UserRole.SUPERVISOR),
-    (UserRole.CONTRACTOR_USER, UserRole.QUALITY_ENGINEER),
 ]
 
 # (inviter, target) pairs that must be rejected.
 FORBIDDEN = [
-    # Client admin can only invite client users (contractors come in via
-    # POST /projects/{id}/contractors, not this matrix).
+    # Designations are no longer org roles — they can't be invited into the org.
+    (UserRole.CONTRACTOR_ADMIN, UserRole.PROJECT_MANAGER),
+    (UserRole.CONTRACTOR_ADMIN, UserRole.SUPERVISOR),
+    (UserRole.CONTRACTOR_ADMIN, UserRole.QUALITY_ENGINEER),
+    # Each admin only builds their own side's team.
+    (UserRole.CLIENT_ADMIN, UserRole.CONTRACTOR_USER),
+    (UserRole.CONTRACTOR_ADMIN, UserRole.CLIENT_USER),
     (UserRole.CLIENT_ADMIN, UserRole.CONTRACTOR_ADMIN),
-    (UserRole.CLIENT_ADMIN, UserRole.PROJECT_MANAGER),
     (UserRole.CLIENT_ADMIN, UserRole.CLIENT_ADMIN),
-    # Client users cannot invite anyone via this endpoint.
-    (UserRole.CLIENT_USER, UserRole.CLIENT_USER),
-    (UserRole.CLIENT_USER, UserRole.PROJECT_MANAGER),
-    # Contractor users cannot create more contractor users (admin-only).
-    (UserRole.CONTRACTOR_USER, UserRole.CONTRACTOR_USER),
     (UserRole.CONTRACTOR_ADMIN, UserRole.CONTRACTOR_ADMIN),
-    # Leaf roles cannot invite anyone.
+    # Non-admins cannot invite anyone.
+    (UserRole.CLIENT_USER, UserRole.CLIENT_USER),
+    (UserRole.CONTRACTOR_USER, UserRole.CONTRACTOR_USER),
     (UserRole.PROJECT_MANAGER, UserRole.QUALITY_ENGINEER),
-    (UserRole.PROJECT_MANAGER, UserRole.SUPERVISOR),
     (UserRole.QUALITY_ENGINEER, UserRole.SUPERVISOR),
     (UserRole.SUPERVISOR, UserRole.QUALITY_ENGINEER),
 ]

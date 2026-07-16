@@ -11,6 +11,7 @@ from app.routers import (
     chatbot,
     confirmations,
     cube_tests,
+    directory,
     dispatch_token,
     dispatches,
     documents,
@@ -60,6 +61,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router, prefix=settings.API_V1_PREFIX)
     app.include_router(suppliers.router, prefix=settings.API_V1_PREFIX)
     app.include_router(labs.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(directory.router, prefix=settings.API_V1_PREFIX)
     app.include_router(catalog.router, prefix=settings.API_V1_PREFIX)
     app.include_router(floors.router, prefix=settings.API_V1_PREFIX)
     app.include_router(mix_designs.router, prefix=settings.API_V1_PREFIX)

@@ -10,12 +10,12 @@ import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { BlockControl } from '../../components/BlockControl';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { canBlockEntities } from '../../lib/roles';
-import { useCreateLab, useLabs, useResendLabConfirmation, useSetLabBlocked } from '../../queries/labs';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { useCreateLab, useLabs, useResendLabConfirmation, useReviewLab, useSetLabBlocked } from '../../queries/labs';
 import { str } from '../../lib/coerce';
 import type { ConfirmationStatus, LabCreate, LabResponse } from '../../types/master';
 
@@ -24,6 +24,11 @@ const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
 };
 const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
+};
+const APPROVAL: Record<string, { variant: 'pass' | 'warn' | 'fail'; label: string }> = {
+  PENDING: { variant: 'warn', label: 'Awaiting approval' },
+  ACCEPTED: { variant: 'pass', label: 'Approved' },
+  REJECTED: { variant: 'fail', label: 'Rejected' },
 };
 
 const schema = z.object({
@@ -40,15 +45,36 @@ const EMPTY: FormValues = { lab_name: '', lab_type: 'THIRD_PARTY', accreditation
 
 export const ProjectLabs: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const canManage = project.access.can_manage_contractor_side;
-  const canBlock = canBlockEntities(user?.role);
+  const clientMode = project.registration_by === 'CLIENT';
+  const canRegister = clientMode
+    ? project.access.can_manage_client_side
+    : project.access.can_manage_contractor_side;
+  const canReview = project.access.can_manage_contractor_side;
+  const canBlock = canBlockEntities(project.access);
 
   const { data: rows = [], isPending, error: loadError } = useLabs(pid);
   const createLab = useCreateLab(pid);
   const resend = useResendLabConfirmation(pid);
   const setBlocked = useSetLabBlocked(pid);
+  const review = useReviewLab(pid);
+  const confirm = useConfirm();
+
+  const reviewLab = async (l: LabResponse, accept: boolean) => {
+    if (!accept && !(await confirm({
+      title: `Reject ${l.lab_name}?`,
+      description: 'This lab won’t be usable for cube dispatch on this project.',
+      confirmLabel: 'Reject', danger: true,
+    }))) {
+      return;
+    }
+    try {
+      await review.mutateAsync({ labId: l.lab_id, accept });
+      toast.success(accept ? `Approved ${l.lab_name}.` : `Rejected ${l.lab_name}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not update the approval.'));
+    }
+  };
 
   const toggleBlock = async (l: LabResponse, reason?: string) => {
     try {
@@ -98,7 +124,7 @@ export const ProjectLabs: React.FC = () => {
     <div>
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load labs.')}</ErrorBox>}
 
-      {canManage && showForm && (
+      {canRegister && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain qms-mb-12">Register a testing lab</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="qms-grid-2" noValidate>
@@ -127,7 +153,7 @@ export const ProjectLabs: React.FC = () => {
       <Card className="qms-form-section" padding="none">
         <div className="qms-card-header">
           <h3 className="qms-section-heading-plain">Testing labs</h3>
-          {canManage && !showForm && (
+          {canRegister && !showForm && (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
               Register lab
             </Button>
@@ -151,6 +177,21 @@ export const ProjectLabs: React.FC = () => {
                     <td>{l.contact_email ?? l.contact_phone ?? '—'}</td>
                     <td>
                       <div className="qms-cell-actions">
+                        {l.registered_by === 'CLIENT' && l.approval_status !== 'NOT_REQUIRED' && (
+                          <Badge variant={APPROVAL[l.approval_status].variant} title={l.approval_reason ?? undefined}>
+                            {APPROVAL[l.approval_status].label}
+                          </Badge>
+                        )}
+                        {canReview && l.approval_status === 'PENDING' && (
+                          <>
+                            <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewLab(l, true)}>
+                              Approve
+                            </Button>
+                            <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewLab(l, false)}>
+                              Reject
+                            </Button>
+                          </>
+                        )}
                         {l.is_blocked ? (
                           <Badge variant="fail" title={l.block_reason ?? undefined}>Blocked</Badge>
                         ) : (
@@ -159,7 +200,7 @@ export const ProjectLabs: React.FC = () => {
                         {!l.is_blocked && l.status === 'CONFIRMED' && l.confirmed_at && (
                           <span className="qms-text-sm text-muted">{new Date(l.confirmed_at).toLocaleDateString()}</span>
                         )}
-                        {canManage && !l.is_blocked && l.status !== 'CONFIRMED' && l.contact_email && (
+                        {canRegister && !l.is_blocked && l.status !== 'CONFIRMED' && l.contact_email && (
                           <Button
                             variant="ghost"
                             size="sm"

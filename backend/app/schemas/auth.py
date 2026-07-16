@@ -221,3 +221,9 @@ class TeamMemberResponse(BaseModel):
     status: str
     is_org_admin: bool
     joined_at: datetime | None
+    user_id: int | None = None
+    # Availability: the active project this member is currently assigned to (a
+    # member can be on only one at a time), so the project picker can grey out
+    # busy members. None when the member is free to assign.
+    active_project_id: int | None = None
+    active_project_name: str | None = None

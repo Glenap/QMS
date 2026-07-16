@@ -137,23 +137,38 @@ class InsufficientVolumeError(HTTPException):
         )
 
 
-class PourAlreadyCompletedError(HTTPException):
+class DeliveryNotAcceptedError(HTTPException):
+    """A pour was raised from a delivery that hasn't been accepted yet — the pour
+    records an accepted (QE-signed-off) delivery, and its volume is that of the
+    truck, so the delivery must be ACCEPTED first."""
+
     def __init__(self):
         super().__init__(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pour has already been completed",
+            detail="A pour can only be recorded from an accepted delivery.",
+        )
+
+
+class PourAlreadyExistsError(HTTPException):
+    """A pour was raised from a delivery that already has one — one delivery
+    yields at most one pour."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A pour has already been recorded for this delivery.",
         )
 
 
 class GradeNotApprovedError(HTTPException):
-    """A pour was raised for a grade that has no APPROVED mix design on the
-    project — only grades with an approved mix may be poured."""
+    """A dispatch was raised for a grade that has no APPROVED mix design on the
+    project — only grades with an approved mix may be dispatched/poured."""
 
     def __init__(self):
         super().__init__(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This grade has no approved mix design on the project. "
-            "Get a mix design approved before raising a pour for it.",
+            "Get a mix design approved before dispatching concrete for it.",
         )
 
 
@@ -197,6 +212,55 @@ class EntityBlockedError(HTTPException):
         if reason:
             detail += f" Reason: {reason}"
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
+class EntityNotApprovedError(HTTPException):
+    """A client-registered RMC supplier or testing lab was used before the
+    contractor accepted it. It must be accepted first."""
+
+    def __init__(self, kind: str):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"This {kind} is awaiting the contractor's approval and can't "
+            "be used yet.",
+        )
+
+
+class NoAcceptedContractorError(HTTPException):
+    """The client tried to register an RMC/lab (client-registration mode) with no
+    accepted contractor on the project to approve and work with it."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bring a contractor onto the project (and have them accept) "
+            "before registering RMC suppliers or labs as the client.",
+        )
+
+
+class MemberNotInOrgError(HTTPException):
+    """A project assignment named someone who isn't a team member yet — only
+    existing (accepted) org members can be assigned to a project."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This person isn't in your team yet. Invite them to the team "
+            "first, then assign them to the project once they've accepted.",
+        )
+
+
+class MemberBusyError(HTTPException):
+    """A team member can be on only one active project at a time; they're freed
+    for reassignment once their current project is completed."""
+
+    def __init__(self, project_name: str | None = None):
+        where = f" ({project_name})" if project_name else ""
+        super().__init__(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This member is already assigned to an active project{where}. "
+            "They can be reassigned once that project is completed.",
+        )
 
 
 class NCRStateError(HTTPException):

@@ -37,4 +37,16 @@ export const labsApi = {
       .post<LabResponse>(`/projects/${projectId}/labs/${labId}/unblock`)
       .then((r) => r.data);
   },
+
+  // Contractor accepts / rejects a client-registered lab.
+  approve(projectId: number, labId: number): Promise<LabResponse> {
+    return api
+      .post<LabResponse>(`/projects/${projectId}/labs/${labId}/approve`)
+      .then((r) => r.data);
+  },
+  reject(projectId: number, labId: number, reason?: string): Promise<LabResponse> {
+    return api
+      .post<LabResponse>(`/projects/${projectId}/labs/${labId}/reject`, { reason })
+      .then((r) => r.data);
+  },
 };

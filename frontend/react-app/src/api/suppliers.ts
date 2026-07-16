@@ -40,6 +40,18 @@ export const suppliersApi = {
       .then((r) => r.data);
   },
 
+  // Contractor accepts / rejects a client-registered RMC.
+  approve(projectId: number, supplierId: number): Promise<SupplierResponse> {
+    return api
+      .post<SupplierResponse>(`/projects/${projectId}/suppliers/${supplierId}/approve`)
+      .then((r) => r.data);
+  },
+  reject(projectId: number, supplierId: number, reason?: string): Promise<SupplierResponse> {
+    return api
+      .post<SupplierResponse>(`/projects/${projectId}/suppliers/${supplierId}/reject`, { reason })
+      .then((r) => r.data);
+  },
+
   // QE/PM emails the RMC about a quality issue.
   notify(projectId: number, supplierId: number, data: RmcNotify): Promise<void> {
     return api

@@ -9,13 +9,19 @@ Senders: invitation, OTP, supplier/lab confirmation, mix-design request, truck
 dispatch, truck result, lab-report request, lab reminder.
 """
 
+import base64
+import io
 from pathlib import Path
 
 import httpx
+from fastapi import UploadFile
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings
+
+# An optional email attachment as (filename, raw bytes).
+Attachment = tuple[str, bytes]
 
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
@@ -58,7 +64,9 @@ def _render_template(template_name: str, context: dict) -> str:
 # Brevo is required on hosts that block outbound SMTP ports (e.g. Render free).
 # ---------------------------------------------------------------------------
 
-async def _send_via_brevo(message: MessageSchema) -> None:
+async def _send_via_brevo(
+    message: MessageSchema, attachment: Attachment | None = None
+) -> None:
     """Send one message through Brevo's transactional email HTTP API (port 443)."""
     payload = {
         "sender": {"name": settings.MAIL_FROM_NAME, "email": settings.MAIL_FROM},
@@ -66,6 +74,11 @@ async def _send_via_brevo(message: MessageSchema) -> None:
         "subject": message.subject,
         "htmlContent": message.body,
     }
+    if attachment is not None:
+        filename, content = attachment
+        payload["attachment"] = [
+            {"name": filename, "content": base64.b64encode(content).decode("ascii")}
+        ]
     headers = {
         "api-key": settings.BREVO_API_KEY,
         "accept": "application/json",
@@ -76,11 +89,17 @@ async def _send_via_brevo(message: MessageSchema) -> None:
         resp.raise_for_status()
 
 
-async def _send(message: MessageSchema) -> None:
-    """Deliver via the configured provider. Callers keep building MessageSchema."""
+async def _send(message: MessageSchema, attachment: Attachment | None = None) -> None:
+    """Deliver via the configured provider. Callers keep building MessageSchema;
+    an optional ``attachment`` (filename, bytes) is carried by both transports."""
     if settings.MAIL_PROVIDER == "brevo":
-        await _send_via_brevo(message)
+        await _send_via_brevo(message, attachment)
     else:
+        if attachment is not None:
+            filename, content = attachment
+            message.attachments = [
+                UploadFile(io.BytesIO(content), filename=filename, size=len(content))
+            ]
         await fastmail.send_message(message)
 
 
@@ -243,6 +262,37 @@ async def send_rmc_issue_email(
     await _send(msg)
 
 
+async def send_ncr_report_email(
+    supplier_email: str,
+    supplier_name: str,
+    project_name: str,
+    subject: str,
+    message: str,
+    sender_name: str,
+    ncr_number: str | None = None,
+    attachment: Attachment | None = None,
+) -> None:
+    """A QE formally notifies an RMC that an NCR has been raised against its
+    supply, optionally attaching a PDF report. Distinct from ``send_rmc_issue_email``
+    (which is the alert-feed drift notice) — this is the NCR record's own email.
+    """
+    html_body = _render_template("ncr_report.html", {
+        "supplier_name": supplier_name,
+        "project_name": project_name,
+        "ncr_number": ncr_number,
+        "message": message,
+        "sender_name": sender_name,
+        "has_report": attachment is not None,
+    })
+    msg = MessageSchema(
+        subject=f"[{project_name}] {subject}",
+        recipients=[supplier_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await _send(msg, attachment)
+
+
 async def send_lab_confirmation_email(
     lab_email: str,
     lab_name: str,
@@ -395,6 +445,31 @@ async def send_lab_reminder_email(
     message = MessageSchema(
         subject=f"Pending cube test results — {sample_reference} — {project_name}",
         recipients=[lab_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await _send(message)
+
+
+async def send_project_assignment_email(
+    member_email: str,
+    member_name: str | None,
+    assigned_by_name: str,
+    project_name: str,
+    role: str,
+) -> None:
+    """Sent when a team member is assigned a designation on a project."""
+    html_body = _render_template("project_assignment.html", {
+        "greeting": f"Hi {member_name}," if member_name else "Hi,",
+        "assigned_by_name": assigned_by_name,
+        "project_name": project_name,
+        "role": role.replace("_", " ").title(),
+        "app_url": f"{settings.FRONTEND_URL}/app",
+    })
+
+    message = MessageSchema(
+        subject=f"You've been assigned to {project_name} on Strata",
+        recipients=[member_email],
         body=html_body,
         subtype=MessageType.html,
     )

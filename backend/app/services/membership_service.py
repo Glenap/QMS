@@ -1,27 +1,38 @@
-"""membership_service.py — assign / invite users to a project.
+"""membership_service.py — assign existing team members to a project.
 
-Assigning to a project either links an existing org user (same org as the
-caller) via a ProjectMember row, or invites a brand-new person by email — the
-invitation carries the project_id + project_role so accept_invitation can create
-the ProjectMember once they verify their email.
+Team-building and projects are independent: an org admin invites people to the
+org team (no designation) via /auth/invite; here an existing team member is
+**assigned to a project** with a per-project designation (ProjectMember row).
+
+Rules:
+  * only an existing, same-org member can be assigned (no invite-new here);
+  * a member can be on at most one *active* project at a time (freed once that
+    project is completed);
+  * the assignee is emailed that they've been given a role on the project.
 """
 
-from datetime import UTC, datetime, timedelta
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AlreadyExistsError, PermissionDeniedError
+from app.core.email import send_project_assignment_email
+from app.core.exceptions import (
+    AlreadyExistsError,
+    MemberBusyError,
+    MemberNotInOrgError,
+    PermissionDeniedError,
+)
 from app.core.project_access import (
     ensure_can_manage_contractor_side,
     ensure_contractor_admin_for,
     is_owning_client_admin,
 )
-from app.core.security import create_invitation_token
-from app.models.auth import ProjectRole, User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.repositories.auth_repo import AuthRepository
 from app.schemas.master import ProjectMemberCreate, ProjectMemberResponse
-from app.services.auth_service import _try_send_invitation_email
+
+logger = logging.getLogger(__name__)
 
 
 def _member_status(user: User | None) -> str:
@@ -31,16 +42,6 @@ def _member_status(user: User | None) -> str:
     if user.is_offboarded:
         return "DEACTIVATED"
     return "ACTIVE" if user.is_active else "UNVERIFIED"
-
-
-# A project role implies the org-level role a freshly-invited user gets.
-PROJECT_ROLE_TO_ORG_ROLE = {
-    ProjectRole.CLIENT_LEAD: UserRole.CLIENT_USER,
-    ProjectRole.CONTRACTOR_LEAD: UserRole.CONTRACTOR_USER,
-    ProjectRole.PROJECT_MANAGER: UserRole.PROJECT_MANAGER,
-    ProjectRole.QUALITY_ENGINEER: UserRole.QUALITY_ENGINEER,
-    ProjectRole.SUPERVISOR: UserRole.SUPERVISOR,
-}
 
 
 class MembershipService:
@@ -71,63 +72,54 @@ class MembershipService:
 
         await self._ensure_can_assign(actor, project, role)
 
-        # The member's org is the actor's org (CLIENT roles → client org;
-        # CONTRACTOR roles → the actor's contractor org).
+        # Only an existing, same-org, accepted member can be assigned — team
+        # onboarding happens up front via /auth/invite, not here.
         member_org_id = actor.org_id
-
         existing = await self.repo.get_user_by_email(data.email)
-        if existing:
-            if existing.org_id != member_org_id:
-                raise PermissionDeniedError(
-                    "That user belongs to a different organisation"
-                )
-            if await self.repo.get_project_member(project.project_id, existing.user_id):
-                raise AlreadyExistsError("Project member")
-            member = await self.repo.create_project_member(
-                project_id=project.project_id,
-                user_id=existing.user_id,
-                org_id=member_org_id,
-                project_role=role.value,
-                assigned_by=actor.user_id,
-            )
-            return ProjectMemberResponse(
-                email=existing.email,
-                full_name=existing.full_name,
-                project_role=role.value,
-                status="ACTIVE" if existing.is_active else "UNVERIFIED",
-                user_id=existing.user_id,
-                assigned_at=member.assigned_at,
-            )
+        if not existing:
+            raise MemberNotInOrgError()
+        if existing.org_id != member_org_id:
+            raise PermissionDeniedError("That user belongs to a different organisation")
+        if await self.repo.get_project_member(project.project_id, existing.user_id):
+            raise AlreadyExistsError("Project member")
 
-        # New person → invite, carrying the project assignment.
-        token = create_invitation_token()
-        expires_at = datetime.now(UTC) + timedelta(hours=72)
-        await self.repo.create_invitation(
-            org_id=member_org_id,
-            invited_email=data.email,
-            role=PROJECT_ROLE_TO_ORG_ROLE[role],
-            invited_by=actor.user_id,
-            token=token,
-            expires_at=expires_at,
+        # One active project at a time — freed once their current one completes.
+        busy = await self.repo.active_project_for_user(existing.user_id)
+        if busy is not None:
+            raise MemberBusyError(busy[1])
+
+        member = await self.repo.create_project_member(
             project_id=project.project_id,
+            user_id=existing.user_id,
+            org_id=member_org_id,
             project_role=role.value,
+            assigned_by=actor.user_id,
         )
-        org = await self.repo.get_org_by_id(member_org_id)
-        await _try_send_invitation_email(
-            invited_email=data.email,
-            invited_by_name=actor.full_name,
-            org_name=org.org_name if org else "",
-            role=role.value,
-            token=token,
-        )
+        await self._notify_assignment(existing, actor, project, role)
         return ProjectMemberResponse(
-            email=data.email,
-            full_name=None,
+            email=existing.email,
+            full_name=existing.full_name,
             project_role=role.value,
-            status="INVITED",
-            user_id=None,
-            assigned_at=None,
+            status="ACTIVE" if existing.is_active else "UNVERIFIED",
+            user_id=existing.user_id,
+            assigned_at=member.assigned_at,
         )
+
+    async def _notify_assignment(
+        self, member: User, actor: User, project: Project, role: ProjectRole
+    ) -> None:
+        """Tell the member they've been given a designation on the project.
+        Best-effort — an email failure must not roll back the assignment."""
+        try:
+            await send_project_assignment_email(
+                member_email=member.email,
+                member_name=member.full_name,
+                assigned_by_name=actor.full_name,
+                project_name=project.project_name,
+                role=role.value,
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort notification
+            logger.warning("Assignment email to %s failed: %s", member.email, exc)
 
     async def list_members(self, project: Project) -> list[ProjectMemberResponse]:
         members = await self.repo.list_project_members(project.project_id)

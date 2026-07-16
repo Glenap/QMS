@@ -190,16 +190,16 @@ async def invite_user(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Invite a user to join your organisation.
+    Invite a user to join your organisation's team (no project designation).
 
     Who can invite whom:
       CLIENT_ADMIN      → invites CLIENT_USER
-      CONTRACTOR_ADMIN  → invites CONTRACTOR_USER, PROJECT_MANAGER,
-                          SUPERVISOR, QUALITY_ENGINEER
-      CONTRACTOR_USER   → invites PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+      CONTRACTOR_ADMIN  → invites CONTRACTOR_USER
 
-    (Bringing a contractor org onto a project is a separate, project-scoped
-    flow — see POST /projects/{id}/contractors.)
+    Team members carry no functional designation until they're assigned to a
+    project (POST /projects/{id}/members), where the per-project designation
+    (PM / QE / Supervisor / Lead) is chosen. Bringing a contractor org onto a
+    project is a separate flow — see POST /projects/{id}/contractors.
 
     Invited user receives an email with a registration link.
     """
@@ -213,32 +213,19 @@ async def invite_user(
 
 def _validate_invite_permission(inviting_user: User, target_role: UserRole) -> None:
     """
-    Enforces who can invite whom.
+    Enforces who can invite whom into the org team (designation-less).
 
     CLIENT_ADMIN      → CLIENT_USER
-    CONTRACTOR_ADMIN  → CONTRACTOR_USER, PROJECT_MANAGER, SUPERVISOR,
-                        QUALITY_ENGINEER
-    CONTRACTOR_USER   → PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+    CONTRACTOR_ADMIN  → CONTRACTOR_USER
 
-    PROJECT_MANAGER / QUALITY_ENGINEER / SUPERVISOR are leaf roles and cannot
-    invite anyone. Bringing a contractor onto a project is project-scoped
-    (POST /projects/{id}/contractors), not this endpoint.
+    Only org admins build their team. Functional designations (PM / QE /
+    Supervisor / Lead) are not org roles anymore — they're assigned per project
+    (POST /projects/{id}/members). Bringing a contractor onto a project is
+    project-scoped (POST /projects/{id}/contractors), not this endpoint.
     """
     allowed_map = {
-        UserRole.CLIENT_ADMIN: [
-            UserRole.CLIENT_USER,
-        ],
-        UserRole.CONTRACTOR_ADMIN: [
-            UserRole.CONTRACTOR_USER,
-            UserRole.PROJECT_MANAGER,
-            UserRole.SUPERVISOR,
-            UserRole.QUALITY_ENGINEER,
-        ],
-        UserRole.CONTRACTOR_USER: [
-            UserRole.PROJECT_MANAGER,
-            UserRole.SUPERVISOR,
-            UserRole.QUALITY_ENGINEER,
-        ],
+        UserRole.CLIENT_ADMIN: [UserRole.CLIENT_USER],
+        UserRole.CONTRACTOR_ADMIN: [UserRole.CONTRACTOR_USER],
     }
 
     allowed_roles = allowed_map.get(inviting_user.role, [])

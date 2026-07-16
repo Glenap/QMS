@@ -18,7 +18,12 @@ from tests.helpers import (
     register_and_token,
     sample_project_payload,
 )
-from tests.integration.test_phase2_pour_flow import _pour_refs, _project_with_qe
+from tests.integration.test_phase1_master_flow import _project_with_qe
+from tests.integration.test_phase3_dispatch_flow import (
+    _accepted_delivery,
+    _create_pour,
+    _dispatch_refs,
+)
 from tests.integration.test_phase4_cube_flow import (
     _PDF,
     _cast_sample,
@@ -44,23 +49,21 @@ class TestProjectDateIntegrity:
 
 class TestPourDateIntegrity:
     async def test_pour_before_project_start_is_rejected(self, client, db_session):
-        contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
-        refs = await _pour_refs(client, db_session, contractor_token, qe_token, pid)
-        resp = await client.post(
-            f"{API}/projects/{pid}/pours",
-            json={**refs, "pour_date": "2026-06-15", "volume_cum": 30.0},
-            headers=bearer(qe_token),
+        _, qe_token, _, pid, refs, dispatch_id = await _accepted_delivery(
+            client, db_session
+        )
+        resp = await _create_pour(
+            client, qe_token, pid, dispatch_id, refs, pour_date="2026-06-15"
         )
         assert resp.status_code == 400, resp.text
         assert "project start date" in resp.json()["detail"].lower()
 
     async def test_pour_after_project_end_is_rejected(self, client, db_session):
-        contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
-        refs = await _pour_refs(client, db_session, contractor_token, qe_token, pid)
-        resp = await client.post(
-            f"{API}/projects/{pid}/pours",
-            json={**refs, "pour_date": "2029-01-15", "volume_cum": 30.0},
-            headers=bearer(qe_token),
+        _, qe_token, _, pid, refs, dispatch_id = await _accepted_delivery(
+            client, db_session
+        )
+        resp = await _create_pour(
+            client, qe_token, pid, dispatch_id, refs, pour_date="2029-01-15"
         )
         assert resp.status_code == 400, resp.text
         assert "project end date" in resp.json()["detail"].lower()
@@ -69,15 +72,15 @@ class TestPourDateIntegrity:
 class TestMixDesignDateIntegrity:
     async def test_trial_mix_before_project_start_is_rejected(self, client, db_session):
         contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
-        # _pour_refs already requests M30 from the supplier + mints its mix link.
-        refs = await _pour_refs(client, db_session, contractor_token, qe_token, pid)
+        # _dispatch_refs already requests M30 from the supplier + mints its mix link.
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
         suppliers = (
             await client.get(f"{API}/projects/{pid}/suppliers", headers=bearer(contractor_token))
         ).json()
         token = next(
             s["mix_submission_token"]
             for s in suppliers
-            if s["supplier_id"] == refs["supplier_horizontal_id"]
+            if s["supplier_id"] == refs["supplier_id"]
         )
         # project start is 2026-07-01 — a trial mix before that is impossible.
         resp = await client.post(

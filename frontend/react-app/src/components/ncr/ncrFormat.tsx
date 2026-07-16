@@ -6,8 +6,9 @@ import type {
   ConfidenceLevel,
   NCRResponse,
   NCRStatus,
-  PenaltyType,
   ResultStatus,
+  RetestResult,
+  RetestType,
 } from '../../types/master';
 
 // ── Badge / option maps shared across the list and detail panel ────────────────
@@ -30,12 +31,17 @@ export const ACTION_STATUS_OPTIONS = [
   { label: 'Completed', value: 'COMPLETED' },
 ];
 
-export const PENALTY_LABEL: Record<PenaltyType, string> = {
-  RATE_REDUCTION: 'Rate reduction',
-  REJECTION: 'Rejection',
-  DEMOLITION: 'Demolition',
+export const RETEST_TYPE_LABEL: Record<RetestType, string> = {
+  CORE_CUTTING: 'Core cutting',
+  REBOUND_HAMMER: 'Rebound hammer',
+  UPV: 'Ultrasonic pulse velocity',
 };
-export const PENALTY_OPTIONS = Object.entries(PENALTY_LABEL).map(([value, label]) => ({ value, label }));
+export const RETEST_TYPE_OPTIONS = Object.entries(RETEST_TYPE_LABEL).map(([value, label]) => ({ value, label }));
+
+export const RETEST_RESULT_BADGE: Record<RetestResult, { variant: 'pass' | 'fail'; label: string }> = {
+  PASS: { variant: 'pass', label: 'Pass' },
+  FAIL: { variant: 'fail', label: 'Fail' },
+};
 
 export const CONFIDENCE_BADGE: Record<ConfidenceLevel, { variant: 'pass' | 'warn' | 'pending'; label: string }> = {
   HIGH: { variant: 'pass', label: 'High confidence' },

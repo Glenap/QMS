@@ -24,27 +24,25 @@ from app.models.transaction import (
 
 
 class PourCreate(BaseModel):
+    """The QE records a pour from an accepted delivery. Grade, supplier and
+    volume are taken from the delivery; the QE supplies the placement location
+    (tower → floor → component) and pour metadata."""
+
+    dispatch_id: int
     tower_id: int
     floor_id: int
     component_id: int
-    grade_id: int
-    supplier_horizontal_id: int
     supplier_vertical_id: int | None = None
     mix_design_id: int | None = None
     pour_date: date
     pour_reference: str | None = None
-    volume_cum: float | None = None
     sub_contractor_name: str | None = None
-
-
-class PourComplete(BaseModel):
-    volume_actual_cum: float | None = None
-    completion_notes: str | None = None
 
 
 class PourResponse(BaseModel):
     pour_id: int
     project_id: int
+    dispatch_id: int | None = None
     tower_id: int
     tower_name: str | None = None
     floor_id: int
@@ -63,10 +61,6 @@ class PourResponse(BaseModel):
     volume_actual_cum: float | None
     completion_notes: str | None
     completed_at: datetime | None
-    # Dispatch rollups: concrete delivered so far (accepted trucks) and the
-    # volume still to order against the planned volume (drives the next dispatch).
-    volume_delivered_cum: float | None = None
-    volume_remaining_cum: float | None = None
     created_at: datetime
 
 
@@ -74,9 +68,9 @@ class PourResponse(BaseModel):
 
 
 class DispatchCreate(BaseModel):
-    """QE orders a truckload of concrete from a project supplier for a pour."""
+    """QE orders a truckload of concrete of a grade from a project supplier. The
+    pour that records the delivery is created later, from the accepted truck."""
 
-    pour_id: int
     supplier_id: int
     grade_id: int
     volume_ordered_cum: float

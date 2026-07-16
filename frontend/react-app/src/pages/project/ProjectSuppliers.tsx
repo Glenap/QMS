@@ -11,14 +11,15 @@ import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail, FileDown } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { BlockControl } from '../../components/BlockControl';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { canBlockEntities } from '../../lib/roles';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import {
   useCreateSupplier,
   useResendSupplierConfirmation,
+  useReviewSupplier,
   useSetSupplierBlocked,
   useSuppliers,
 } from '../../queries/suppliers';
@@ -31,6 +32,11 @@ const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
 };
 const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
+};
+const APPROVAL: Record<string, { variant: 'pass' | 'warn' | 'fail'; label: string }> = {
+  PENDING: { variant: 'warn', label: 'Awaiting approval' },
+  ACCEPTED: { variant: 'pass', label: 'Approved' },
+  REJECTED: { variant: 'fail', label: 'Rejected' },
 };
 
 const schema = z.object({
@@ -48,16 +54,39 @@ const EMPTY: FormValues = { supplier_name: '', plant_name: '', gst_number: '', p
 
 export const ProjectSuppliers: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
-  const canManage = project.access.can_manage_contractor_side;
-  const canBlock = canBlockEntities(user?.role);
+  // Who registers RMC depends on the project mode; the contractor accepts/rejects
+  // client-registered ones.
+  const clientMode = project.registration_by === 'CLIENT';
+  const canRegister = clientMode
+    ? project.access.can_manage_client_side
+    : project.access.can_manage_contractor_side;
+  const canReview = project.access.can_manage_contractor_side;
+  const canBlock = canBlockEntities(project.access);
 
   const { data: rows = [], isPending, error: loadError } = useSuppliers(pid);
   const { data: documents = [] } = useDocuments(pid);
   const createSupplier = useCreateSupplier(pid);
   const setBlocked = useSetSupplierBlocked(pid);
+  const review = useReviewSupplier(pid);
+  const confirm = useConfirm();
+
+  const reviewSupplier = async (s: SupplierResponse, accept: boolean) => {
+    if (!accept && !(await confirm({
+      title: `Reject ${s.supplier_name}?`,
+      description: 'This RMC won’t be usable for dispatch on this project.',
+      confirmLabel: 'Reject', danger: true,
+    }))) {
+      return;
+    }
+    try {
+      await review.mutateAsync({ supplierId: s.supplier_id, accept });
+      toast.success(accept ? `Approved ${s.supplier_name}.` : `Rejected ${s.supplier_name}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not update the approval.'));
+    }
+  };
 
   const toggleBlock = async (s: SupplierResponse, reason?: string) => {
     try {
@@ -115,7 +144,7 @@ export const ProjectSuppliers: React.FC = () => {
     <div>
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load suppliers.')}</ErrorBox>}
 
-      {canManage && showForm && (
+      {canRegister && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain qms-mb-12">Register an RMC supplier</h3>
           <form onSubmit={handleSubmit(onSubmit)} className="qms-grid-2" noValidate>
@@ -149,7 +178,7 @@ export const ProjectSuppliers: React.FC = () => {
       <Card className="qms-form-section" padding="none">
         <div className="qms-card-header">
           <h3 className="qms-section-heading-plain">Suppliers</h3>
-          {canManage && !showForm && (
+          {canRegister && !showForm && (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
               Register supplier
             </Button>
@@ -194,6 +223,21 @@ export const ProjectSuppliers: React.FC = () => {
                     <td>{s.contact_email ?? s.contact_phone ?? '—'}</td>
                     <td>
                       <div className="qms-cell-actions">
+                        {s.registered_by === 'CLIENT' && s.approval_status !== 'NOT_REQUIRED' && (
+                          <Badge variant={APPROVAL[s.approval_status].variant} title={s.approval_reason ?? undefined}>
+                            {APPROVAL[s.approval_status].label}
+                          </Badge>
+                        )}
+                        {canReview && s.approval_status === 'PENDING' && (
+                          <>
+                            <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewSupplier(s, true)}>
+                              Approve
+                            </Button>
+                            <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewSupplier(s, false)}>
+                              Reject
+                            </Button>
+                          </>
+                        )}
                         {s.is_blocked ? (
                           <Badge variant="fail" title={s.block_reason ?? undefined}>Blocked</Badge>
                         ) : (
@@ -202,7 +246,7 @@ export const ProjectSuppliers: React.FC = () => {
                         {!s.is_blocked && s.status === 'CONFIRMED' && s.confirmed_at && (
                           <span className="qms-text-sm text-muted">{new Date(s.confirmed_at).toLocaleDateString()}</span>
                         )}
-                        {canManage && !s.is_blocked && s.status !== 'CONFIRMED' && s.contact_email && (
+                        {canRegister && !s.is_blocked && s.status !== 'CONFIRMED' && s.contact_email && (
                           <Button
                             variant="ghost"
                             size="sm"

@@ -29,7 +29,8 @@ from app.models.quality import (
     CorrectiveAction,
     CubeTest,
     NCREmbedding,
-    Penalty,
+    NcrRmcNotification,
+    Retest,
 )
 from app.models.transaction import (
     ActionItem,
@@ -49,7 +50,7 @@ __all__ = [
     "TestingLab", "Document",
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
     "ActionItem", "InsituTest",
-    "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion", "NCREmbedding",
-    "Alert",
+    "CubeTest", "NCR", "Retest", "NcrRmcNotification", "CorrectiveAction",
+    "AISuggestion", "NCREmbedding", "Alert",
     "IngestionLog", "Embedding",
 ]

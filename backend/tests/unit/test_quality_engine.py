@@ -75,19 +75,24 @@ class TestAcceptanceCriteria:
         # small σ → the flat fck+3 dominates
         assert quality_engine.group_min_mean(30, 2.0) == 33.0
 
-    def test_individual_failure_is_critical(self):
-        level, cat, _ = quality_engine.evaluate_strength_alert(26.0, 30, [26.0])
-        assert level == "CRITICAL"
-        assert cat == "STRENGTH_INDIVIDUAL"
+    def test_individual_failure_does_not_alert(self):
+        # A single failing 28-day result auto-raises an NCR, so surfacing it as an
+        # alert too would just duplicate the NCR — the engine stays silent.
+        assert quality_engine.evaluate_strength_alert(26.0, 30, [26.0]) is None
+
+    def test_below_characteristic_does_not_alert(self):
+        # Below fck (but above fck−3) is an NCR too (FAIL) — not an alert.
+        assert quality_engine.evaluate_strength_alert(29.0, 30, [29.0]) is None
 
     def test_group_average_drift_is_warning(self):
-        # each ≥ 27 (individual OK) but the 4-sample mean 28.25 < 34.125.
+        # each ≥ 27 (individual OK, no NCR) but the 4-sample mean 28.25 < 34.125 —
+        # the one strength signal no single NCR captures.
         res = quality_engine.evaluate_strength_alert(28.0, 30, [28.0, 29.0, 28.0, 28.0])
         assert res is not None and res[0] == "WARNING" and res[1] == "STRENGTH_GROUP"
 
-    def test_below_characteristic_is_trend_warning(self):
-        res = quality_engine.evaluate_strength_alert(29.0, 30, [29.0])
-        assert res is not None and res[1] == "TREND"
+    def test_group_criterion_needs_four_samples(self):
+        # Fewer than 4 same-grade results → no group verdict yet.
+        assert quality_engine.evaluate_strength_alert(28.0, 30, [28.0, 29.0, 28.0]) is None
 
     def test_healthy_result_has_no_alert(self):
         assert quality_engine.evaluate_strength_alert(35.0, 30, [35.0, 36.0, 34.0, 35.0]) is None

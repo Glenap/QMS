@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { NCRList } from '../../components/ncr/NCRList';
@@ -11,9 +10,8 @@ import '../../components/ncr/ncr.css';
 
 export const NCRDashboard: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const { data, isPending, error } = useNcrList(pid);
   const rows = useMemo(() => data ?? [], [data]);
@@ -32,16 +30,6 @@ export const NCRDashboard: React.FC = () => {
 
   return (
     <div className="qms-page">
-      <div className="qms-page-header">
-        <div>
-          <h1 className="qms-page-title">Non-Conformance Reports</h1>
-          <p className="qms-page-sub">
-            NCRs auto-raised when a cube test falls below its required strength (IS 456).
-            {isQE ? ' Review, log corrective actions and penalties, then close them out.' : ''}
-          </p>
-        </div>
-      </div>
-
       {error && <ErrorBox>{getApiErrorMessage(error, 'Unable to load NCRs.')}</ErrorBox>}
 
       <div className="qms-ncr-kpis">

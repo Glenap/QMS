@@ -11,7 +11,6 @@ import { Button } from '../../components/ui/Button';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { MixDesignsPanel } from '../../components/mix/MixDesignsPanel';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useSuppliers } from '../../queries/suppliers';
@@ -33,13 +32,12 @@ const CONF_LABEL: Record<ConfirmationStatus, string> = {
 
 export const SupplierDetail: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
   const { supplierId } = useParams();
   const sid = Number(supplierId);
   const canManage = project.access.can_manage_contractor_side;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const suppliersQuery = useSuppliers(pid);
   const designsQuery = useSupplierMixDesigns(pid, sid);

@@ -408,23 +408,28 @@ class AuthService:
         pending invitations that haven't been accepted yet.
         """
         users = await self.repo.get_users_by_org(user.org_id)
-        members = [
-            TeamMemberResponse(
-                email=u.email,
-                full_name=u.full_name,
-                role=u.role,
-                status=(
-                    "DEACTIVATED"
-                    if u.is_offboarded
-                    else "ACTIVE"
-                    if u.is_active
-                    else "UNVERIFIED"
-                ),
-                is_org_admin=u.is_org_admin,
-                joined_at=u.created_at,
+        members = []
+        for u in users:
+            busy = await self.repo.active_project_for_user(u.user_id)
+            members.append(
+                TeamMemberResponse(
+                    email=u.email,
+                    full_name=u.full_name,
+                    role=u.role,
+                    status=(
+                        "DEACTIVATED"
+                        if u.is_offboarded
+                        else "ACTIVE"
+                        if u.is_active
+                        else "UNVERIFIED"
+                    ),
+                    is_org_admin=u.is_org_admin,
+                    joined_at=u.created_at,
+                    user_id=u.user_id,
+                    active_project_id=busy[0] if busy else None,
+                    active_project_name=busy[1] if busy else None,
+                )
             )
-            for u in users
-        ]
 
         user_emails = {u.email for u in users}
         invitations = await self.repo.get_pending_invitations_by_org(user.org_id)

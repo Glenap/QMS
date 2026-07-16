@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, ShieldAlert, Sparkles, Wand2 } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, ShieldAlert, Sparkles, TrendingDown, Wand2 } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { getApiErrorMessage } from '../../api/client';
 import { CONFIDENCE_BADGE } from './ncrFormat';
 import { ErrorBox } from '../ui/ErrorBox';
-import { useApplySuggestion, useGenerateSuggestion, useNcrSuggestion } from './queries';
+import {
+  useApplySuggestion,
+  useGenerateSuggestion,
+  useNcrPattern,
+  useNcrSuggestion,
+} from './queries';
 
 interface AIProps {
   pid: number;
@@ -15,14 +20,17 @@ interface AIProps {
 }
 
 export const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClosed }) => {
-  const { data: suggestion, error: loadError } = useNcrSuggestion(pid, ncrId);
+  const suggestionQuery = useNcrSuggestion(pid, ncrId);
+  const suggestion = suggestionQuery.data;
+  const { data: pattern } = useNcrPattern(pid, ncrId);
   const generate = useGenerateSuggestion(pid, ncrId);
   const apply = useApplySuggestion(pid, ncrId);
   const busy = generate.isPending || apply.isPending;
 
   const [showSources, setShowSources] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const error = actionError ?? (loadError ? getApiErrorMessage(loadError, 'Unable to load the AI suggestion.') : null);
+  const error = actionError
+    ?? (suggestionQuery.error ? getApiErrorMessage(suggestionQuery.error, 'Unable to load the AI suggestion.') : null);
 
   const onGenerate = async () => {
     setActionError(null);
@@ -33,6 +41,23 @@ export const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClo
     }
   };
 
+  // Auto-surface: generate the suggestion once when a QE opens an NCR that has
+  // none yet (guarded by a ref so it fires a single time, and only after the
+  // initial fetch has settled to "no suggestion").
+  const autofired = useRef(false);
+  useEffect(() => {
+    if (
+      isQE && !isClosed
+      && suggestionQuery.isFetched
+      && suggestion === null
+      && !autofired.current
+      && !generate.isPending
+    ) {
+      autofired.current = true;
+      void onGenerate();
+    }
+  }, [isQE, isClosed, suggestionQuery.isFetched, suggestion]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const onApply = async () => {
     setActionError(null);
     try {
@@ -42,9 +67,15 @@ export const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClo
     }
   };
 
-  // Nothing to show for non-QE viewers until a suggestion has been generated
-  // (but still surface a load error if one occurred).
-  if (!isQE && !suggestion && !error) return null;
+  const patternSignal = !!pattern && (
+    pattern.supplier_grade_ncr_count > 1
+    || pattern.supplier_ncr_count > 1
+    || pattern.recurring_low_28d_count > 1
+  );
+
+  // Nothing to show for non-QE viewers until there's a suggestion, a meaningful
+  // pattern, or an error to surface.
+  if (!isQE && !suggestion && !patternSignal && !error) return null;
 
   const conf = suggestion?.confidence_level ? CONFIDENCE_BADGE[suggestion.confidence_level] : null;
 
@@ -67,9 +98,19 @@ export const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClo
         )}
       </div>
 
+      {/* Deterministic recurring-failure insight (independent of the LLM) */}
+      {pattern && (patternSignal || suggestion) && (
+        <div className={`qms-ai-pattern ${patternSignal ? 'qms-ai-pattern-warn' : ''}`}>
+          <TrendingDown size={14} />
+          <span>{pattern.summary}</span>
+        </div>
+      )}
+
       {error && <ErrorBox>{error}</ErrorBox>}
 
-      {!suggestion ? (
+      {generate.isPending && !suggestion ? (
+        <p className="text-muted qms-ai-empty">Analysing this failure against similar past NCRs…</p>
+      ) : !suggestion ? (
         <p className="text-muted qms-ai-empty">
           {isQE
             ? 'Generate a probable root cause and corrective actions, grounded in similar past resolved NCRs on this project.'

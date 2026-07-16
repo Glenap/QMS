@@ -59,7 +59,6 @@ export interface QEInboxCount {
 }
 
 export interface DispatchCreate {
-  pour_id: number;
   supplier_id: number;
   grade_id: number;
   volume_ordered_cum: number;

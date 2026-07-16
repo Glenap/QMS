@@ -18,3 +18,40 @@
   align-items: center;
   gap: 6px;
 }
+
+/* Styled file picker (wraps a hidden <input type=file>). */
+.qms-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--gray-700);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.qms-file-btn:hover {
+  border-color: var(--blue-mid);
+  background: var(--blue-light);
+}
+
+.qms-file-btn:focus-within {
+  outline: 2px solid var(--blue-mid);
+  outline-offset: 1px;
+}
+
+.qms-file-btn svg {
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.qms-file-btn-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

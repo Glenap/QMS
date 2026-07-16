@@ -59,7 +59,7 @@
   outline-offset: 1px;
 }
 
-.qms-ncr-penalty-tag {
+.qms-ncr-retest-tag {
   margin-left: 6px;
   display: inline-flex;
   align-items: center;
@@ -120,6 +120,34 @@
   align-items: end;
 }
 
+.qms-ncr-retest-hint {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+}
+
+/* Attach-a-PDF control on the RMC notice */
+.qms-ncr-attach {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+
+.qms-ncr-attach:hover {
+  border-color: var(--blue-mid);
+  color: var(--gray-900);
+}
+
+.qms-ncr-attach:focus-within {
+  outline: 2px solid var(--blue-mid);
+  outline-offset: 1px;
+}
+
 .qms-ncr-textarea {
   width: 100%;
   padding: 8px 10px;
@@ -162,6 +190,31 @@
 .qms-ai-empty {
   font-size: 13px;
   margin: 6px 0 0;
+}
+
+/* Deterministic recurring-failure insight (pattern callout) */
+.qms-ai-pattern {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  font-size: 13px;
+  color: var(--gray-700);
+}
+
+.qms-ai-pattern-warn {
+  background: var(--amber-light, #fef6e7);
+  border-color: var(--amber, #e0a800);
+  color: #7a5b00;
+}
+
+.qms-ai-pattern svg {
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .qms-ai-body {

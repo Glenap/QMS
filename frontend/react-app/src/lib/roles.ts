@@ -12,10 +12,11 @@ export const PROJECT_ROLE_LABELS: Record<string, string> = {
 export const projectRoleLabel = (role: string): string =>
   PROJECT_ROLE_LABELS[role] ?? role;
 
-// A QE, project manager, or contractor (admin/user) may block/unblock an RMC or
-// lab. Mirrors the backend `_BLOCKER_ROLES` in routers/suppliers.py.
-export const canBlockEntities = (role: string | undefined): boolean =>
-  role === 'QUALITY_ENGINEER' ||
-  role === 'PROJECT_MANAGER' ||
-  role === 'CONTRACTOR_ADMIN' ||
-  role === 'CONTRACTOR_USER';
+// The project's QE/PM designation, or the contractor admin, may block/unblock an
+// RMC or lab. Mirrors backend `ensure_can_block_entities` (per-project now).
+export const canBlockEntities = (
+  access: { project_role: string | null; is_contractor_admin: boolean },
+): boolean =>
+  access.project_role === 'QUALITY_ENGINEER' ||
+  access.project_role === 'PROJECT_MANAGER' ||
+  access.is_contractor_admin;

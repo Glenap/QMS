@@ -3,7 +3,9 @@
 import json
 
 from httpx import AsyncClient, Response
+from sqlalchemy import select
 
+from app.models.auth import OrgInvitation
 from tests import mailbox
 
 # A tiny valid-looking PDF blob for the mandatory mix-design / lab-report uploads.
@@ -125,6 +127,53 @@ async def approve_mix_design(
         headers=bearer(qe_token),
     )
     return submitted["mix_design_id"]
+
+
+async def onboard_member(
+    client: AsyncClient,
+    db_session,
+    *,
+    admin_token: str,
+    email: str,
+    full_name: str,
+    org_role: str = "CONTRACTOR_USER",
+) -> str:
+    """Add someone to the org team (designation-less) and accept+verify their
+    invite → returns their access token. org_role is CLIENT_USER (client admin
+    invites) or CONTRACTOR_USER (contractor admin invites)."""
+    resp = await client.post(
+        f"{API}/auth/invite",
+        json={"invited_email": email, "role": org_role},
+        headers=bearer(admin_token),
+    )
+    assert resp.status_code == 201, resp.text
+    inv = (
+        await db_session.execute(
+            select(OrgInvitation)
+            .where(OrgInvitation.invited_email == email)
+            .order_by(OrgInvitation.created_at.desc())
+        )
+    ).scalars().first()
+    token, _ = await accept_and_verify(
+        client, token=inv.token, email=email, full_name=full_name
+    )
+    return token
+
+
+async def assign_member(
+    client: AsyncClient,
+    *,
+    admin_token: str,
+    project_id: int,
+    email: str,
+    project_role: str,
+) -> Response:
+    """Assign an existing team member a per-project designation."""
+    return await client.post(
+        f"{API}/projects/{project_id}/members",
+        json={"email": email, "project_role": project_role},
+        headers=bearer(admin_token),
+    )
 
 
 def sample_project_payload(**overrides) -> dict:

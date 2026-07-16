@@ -2,10 +2,10 @@
 // See backend/app/routers/pours.py.
 
 import { api } from './client';
-import type { PourComplete, PourCreate, PourResponse } from '../types/master';
+import type { PourCreate, PourResponse } from '../types/master';
 
 export const poursApi = {
-  // QUALITY_ENGINEER only.
+  // QUALITY_ENGINEER only — record a pour from an accepted delivery.
   create(projectId: number, data: PourCreate): Promise<PourResponse> {
     return api
       .post<PourResponse>(`/projects/${projectId}/pours`, data)
@@ -22,13 +22,6 @@ export const poursApi = {
   get(projectId: number, pourId: number): Promise<PourResponse> {
     return api
       .get<PourResponse>(`/projects/${projectId}/pours/${pourId}`)
-      .then((r) => r.data);
-  },
-
-  // QUALITY_ENGINEER only.
-  complete(projectId: number, pourId: number, data: PourComplete): Promise<PourResponse> {
-    return api
-      .patch<PourResponse>(`/projects/${projectId}/pours/${pourId}/complete`, data)
       .then((r) => r.data);
   },
 };

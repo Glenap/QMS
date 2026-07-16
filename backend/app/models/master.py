@@ -104,6 +104,12 @@ class Project(Base):
         nullable=False,
         default=ProjectStatus.ACTIVE,
     )
+    # Who registers RMC suppliers + testing labs on this project: "CONTRACTOR"
+    # (default — the contractor registers them) or "CLIENT" (the client registers
+    # them and the contractor accepts/rejects each one).
+    registration_by: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="CONTRACTOR"
+    )
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Size metrics from file headers
     plot_area_acres: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
@@ -345,6 +351,18 @@ class Supplier(Base):
     blocked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # ── Client-registered approval ──
+    # Who registered this RMC: "CONTRACTOR" (registered it themselves, no
+    # approval) or "CLIENT" (the client registered it; the contractor must
+    # accept it before it can be used). approval_status: NOT_REQUIRED (contractor-
+    # registered) | PENDING | ACCEPTED | REJECTED.
+    registered_by: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="CONTRACTOR"
+    )
+    approval_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="NOT_REQUIRED"
+    )
+    approval_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ── Confirmation handshake (passwordless, token-based) ──
     # PENDING → CONFIRMED / DECLINED. The supplier never gets a portal account;
     # they confirm their details via a tokenised email link.
@@ -540,6 +558,17 @@ class TestingLab(Base):
     blocked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # ── Client-registered approval ──
+    # "CONTRACTOR" (contractor registered it, no approval) or "CLIENT" (the client
+    # registered it; the contractor must accept it before use). approval_status:
+    # NOT_REQUIRED (contractor-registered) | PENDING | ACCEPTED | REJECTED.
+    registered_by: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="CONTRACTOR"
+    )
+    approval_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="NOT_REQUIRED"
+    )
+    approval_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ── Confirmation handshake (passwordless, token-based) ──
     # PENDING → CONFIRMED / DECLINED. The lab never gets a portal account; they
     # confirm their details (and complete their profile) via a tokenised link.

@@ -25,6 +25,7 @@ from app.schemas.master import (
     ProjectMemberCreate,
     ProjectMemberResponse,
     ProjectResponse,
+    ProjectStatusUpdate,
     TowerResponse,
 )
 from app.services.contractor_service import ContractorService
@@ -91,6 +92,18 @@ async def get_project(
     db: AsyncSession = Depends(get_db),
 ):
     return await ProjectService(db).get_detail(project, current_user)
+
+
+@router.patch("/{project_id}/status", response_model=ProjectResponse)
+async def update_project_status(
+    data: ProjectStatusUpdate,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owning client admin sets the project's lifecycle status. Completing a
+    project frees its team members for reassignment to other projects."""
+    return await ProjectService(db).set_status(project, data.status, current_user)
 
 
 @router.get("/{project_id}/towers", response_model=list[TowerResponse])

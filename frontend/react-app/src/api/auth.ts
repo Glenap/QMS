@@ -11,6 +11,9 @@ import type {
   TokenResponse,
   MeResponse,
   UserResponse,
+  InviteRequest,
+  InvitationResponse,
+  TeamMemberResponse,
 } from '../types/auth';
 
 export const authApi = {
@@ -43,6 +46,18 @@ export const authApi = {
   // Set (data: URL) or clear (null) the current user's profile picture.
   updateAvatar(avatarUrl: string | null): Promise<UserResponse> {
     return api.put<UserResponse>('/auth/me/avatar', { avatar_url: avatarUrl }).then((r) => r.data);
+  },
+
+  // ── Org team ───────────────────────────────────────────────────────────────
+  // Directory of the caller's org: members (+ availability) and pending invites.
+  team(): Promise<TeamMemberResponse[]> {
+    return api.get<TeamMemberResponse[]>('/auth/team').then((r) => r.data);
+  },
+
+  // Org admin invites someone to the team (designation-less). CLIENT_ADMIN →
+  // CLIENT_USER, CONTRACTOR_ADMIN → CONTRACTOR_USER.
+  invite(data: InviteRequest): Promise<InvitationResponse> {
+    return api.post<InvitationResponse>('/auth/invite', data).then((r) => r.data);
   },
 
   // Org admin only — offboard / restore a member of their org.

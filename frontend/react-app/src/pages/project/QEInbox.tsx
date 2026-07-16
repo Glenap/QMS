@@ -5,14 +5,13 @@
 
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { ClipboardCheck, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useQEInbox, useRecordInsitu } from '../../queries/qeInbox';
@@ -132,26 +131,17 @@ const InsituReviewCard: React.FC<{ pid: number; item: QEReviewItem }> = ({ pid, 
 
 export const QEInbox: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const { data: items = [], isPending, error } = useQEInbox(pid, isQE);
 
-  if (user && !isQE) {
+  if (!isQE) {
     return <Navigate to={`/app/projects/${pid}`} replace />;
   }
 
   return (
     <div>
-      <div className="qms-pw-header">
-        <h1 className="qms-pw-title">
-          <ClipboardCheck size={20} /> In-situ sign-off inbox
-        </h1>
-        <p className="text-muted">
-          Run the in-situ slump test on each admitted delivery, then accept or reject it.
-        </p>
-      </div>
 
       {error && <ErrorBox>{getApiErrorMessage(error, 'Unable to load the inbox.')}</ErrorBox>}
 

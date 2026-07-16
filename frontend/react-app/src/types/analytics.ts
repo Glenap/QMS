@@ -71,6 +71,7 @@ export interface QualityFilters {
   grade_id?: number;
   supplier_id?: number;
   tower_id?: number;
+  contractor_id?: number;
   component_id?: number;
   sample_id?: number;
 }

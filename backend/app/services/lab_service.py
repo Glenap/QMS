@@ -9,13 +9,20 @@ tokenised email link — the confirmation handshake.
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.email import send_lab_confirmation_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    NoAcceptedContractorError,
+    NotFoundError,
+    PermissionDeniedError,
+    TruckStateError,
+)
+from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Project, TestingLab
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.lab_repo import LabRepository
@@ -24,6 +31,7 @@ from app.schemas.master import (
     LabConfirmationView,
     LabConfirmSubmit,
     LabCreate,
+    LabDirectoryItem,
     LabResponse,
 )
 
@@ -67,11 +75,27 @@ class LabService:
     async def create(
         self, data: LabCreate, project: Project, user: User
     ) -> LabResponse:
+        # Client-registered labs attach to the project's accepted contractor and
+        # start PENDING their approval; contractor-registered ones need none.
+        if project.registration_by == "CLIENT":
+            contractors = await contractor_org_ids(
+                self.session, project.project_id, accepted_only=True
+            )
+            if not contractors:
+                raise NoAcceptedContractorError()
+            contractor_org_id = sorted(contractors)[0]
+            registered_by, approval_status = "CLIENT", "PENDING"
+        else:
+            contractor_org_id = user.org_id
+            registered_by, approval_status = "CONTRACTOR", "NOT_REQUIRED"
+
         token = create_invitation_token()
         sent_at = datetime.now(UTC) if data.contact_email else None
         lab = TestingLab(
-            contractor_org_id=user.org_id,
+            contractor_org_id=contractor_org_id,
             project_id=project.project_id,
+            registered_by=registered_by,
+            approval_status=approval_status,
             status="PENDING",
             confirmation_token=token,
             confirmation_sent_at=sent_at,
@@ -96,6 +120,39 @@ class LabService:
             order_by=TestingLab.created_at.desc(),
         )
         return [await self._to_response(lab) for lab in labs]
+
+    async def list_for_org(self, user: User) -> list[LabDirectoryItem]:
+        """Every testing lab visible to the caller's organisation, across
+        projects. A client org sees all labs on its projects (and which
+        contractor holds each); a contractor org sees the labs it holds."""
+        stmt = select(TestingLab, Project.project_name).join(
+            Project, Project.project_id == TestingLab.project_id, isouter=True
+        )
+        if user.role in (UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER):
+            stmt = stmt.where(Project.org_id == user.org_id)
+        else:
+            stmt = stmt.where(TestingLab.contractor_org_id == user.org_id)
+        rows = (
+            await self.session.execute(stmt.order_by(TestingLab.created_at.desc()))
+        ).all()
+        return [
+            LabDirectoryItem(
+                lab_id=lab.lab_id,
+                lab_name=lab.lab_name,
+                lab_type=lab.lab_type,
+                project_id=lab.project_id,
+                project_name=project_name,
+                contractor_org_id=lab.contractor_org_id,
+                contractor_org_name=await self._org_name(lab.contractor_org_id),
+                contact_email=lab.contact_email,
+                city=lab.city,
+                status=lab.status,
+                approval_status=lab.approval_status,
+                registered_by=lab.registered_by,
+                is_blocked=lab.is_blocked,
+            )
+            for lab, project_name in rows
+        ]
 
     async def resend_confirmation(
         self, project: Project, lab_id: int, user: User
@@ -139,6 +196,28 @@ class LabService:
         lab.block_reason = reason if blocked else None
         lab.blocked_by = user.user_id if blocked else None
         lab.blocked_at = datetime.now(UTC) if blocked else None
+        await self.session.flush()
+        return await self._to_response(lab)
+
+    async def set_approval(
+        self,
+        project: Project,
+        lab_id: int,
+        user: User,
+        *,
+        accepted: bool,
+        reason: str | None = None,
+    ) -> LabResponse:
+        """The contractor accepts / rejects a client-registered lab."""
+        lab = await self.repo.get_by(TestingLab.lab_id == lab_id)
+        if not lab or lab.project_id != project.project_id:
+            raise NotFoundError("Lab")
+        if lab.registered_by != "CLIENT":
+            raise TruckStateError(
+                "This lab was registered by the contractor and needs no approval"
+            )
+        lab.approval_status = "ACCEPTED" if accepted else "REJECTED"
+        lab.approval_reason = None if accepted else reason
         await self.session.flush()
         return await self._to_response(lab)
 

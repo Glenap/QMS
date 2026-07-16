@@ -63,6 +63,9 @@ class ProjectCreate(BaseModel):
     project_type: ProjectType | None = None
     project_code: str | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
+    # Who registers RMC suppliers + labs: CONTRACTOR (default) or CLIENT (the
+    # client registers them and the contractor accepts/rejects each).
+    registration_by: Literal["CONTRACTOR", "CLIENT"] = "CONTRACTOR"
     gst_number: str | None = None
     # Location
     address_line1: str | None = None
@@ -101,6 +104,7 @@ class ProjectResponse(BaseModel):
     project_code: str | None
     project_location: str | None
     status: ProjectStatus
+    registration_by: str = "CONTRACTOR"
     city: str | None
     state: str | None
     start_date: date | None
@@ -112,6 +116,12 @@ class ProjectResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ProjectStatusUpdate(BaseModel):
+    """The owning client admin sets a project's lifecycle status. Completing a
+    project frees its assigned team members for reassignment."""
+    status: ProjectStatus
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +168,10 @@ class SupplierResponse(BaseModel):
     confirmed_at: datetime | None
     is_blocked: bool = False
     block_reason: str | None = None
+    # Client-registered RMC approval (see Project.registration_by).
+    registered_by: str = "CONTRACTOR"
+    approval_status: str = "NOT_REQUIRED"
+    approval_reason: str | None = None
     mix_design_document_id: int | None = None
     mix_design_document_name: str | None = None
     mix_submission_token: str | None = None
@@ -170,6 +184,12 @@ class BlockRequest(BaseModel):
     """Reason a QE/PM/contractor gives when blocking an RMC supplier or lab."""
 
     reason: str
+
+
+class ApprovalReject(BaseModel):
+    """Reason the contractor gives when rejecting a client-registered RMC/lab."""
+
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +237,53 @@ class LabResponse(BaseModel):
     confirmed_at: datetime | None
     is_blocked: bool = False
     block_reason: str | None = None
+    # Client-registered lab approval (see Project.registration_by).
+    registered_by: str = "CONTRACTOR"
+    approval_status: str = "NOT_REQUIRED"
+    approval_reason: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Org-wide directories (all RMCs / labs across the caller's projects)
+# ---------------------------------------------------------------------------
+
+class SupplierDirectoryItem(BaseModel):
+    """One RMC in the organisation-wide directory: which project it's registered
+    for and which contractor holds it. Read-only cross-project roll-up."""
+
+    supplier_id: int
+    supplier_name: str
+    project_id: int | None
+    project_name: str | None
+    contractor_org_id: int
+    contractor_org_name: str | None
+    contact_email: str | None
+    plant_location: str | None
+    status: str
+    approval_status: str
+    registered_by: str
+    is_blocked: bool
+
+
+class LabDirectoryItem(BaseModel):
+    """One testing lab in the organisation-wide directory (project + contractor)."""
+
+    lab_id: int
+    lab_name: str
+    lab_type: LabType
+    project_id: int | None
+    project_name: str | None
+    contractor_org_id: int
+    contractor_org_name: str | None
+    contact_email: str | None
+    city: str | None
+    status: str
+    approval_status: str
+    registered_by: str
+    is_blocked: bool
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +291,9 @@ class LabResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ProjectMemberCreate(BaseModel):
-    """Assign someone to a project. If a user with this email already exists in
-    the caller's org they're assigned directly; otherwise they're invited."""
+    """Assign an existing team member to a project with a per-project designation.
+    The email must belong to an accepted member of the caller's org — team
+    onboarding happens up front via /auth/invite, not here."""
     email: EmailStr
     project_role: str  # app.models.auth.ProjectRole value
 
@@ -305,6 +370,9 @@ class ProjectAccess(BaseModel):
     can_manage_client_side: bool
     can_manage_contractor_side: bool
     is_contractor_admin: bool
+    # The viewer's per-project designation (ProjectRole value) or None. Field
+    # capabilities (cast pours, work the gate…) come from this, not the org role.
+    project_role: str | None = None
 
 
 class ProjectDetailResponse(ProjectResponse):

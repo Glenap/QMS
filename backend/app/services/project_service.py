@@ -10,13 +10,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.date_rules import ensure_not_after
+from app.core.exceptions import PermissionDeniedError
 from app.core.project_access import (
+    caller_project_role,
     can_manage_client_side,
     can_manage_contractor_side,
     is_contractor_admin_for,
+    is_owning_client_admin,
 )
 from app.models.auth import User, UserRole
-from app.models.master import Project, ProjectContractor, Tower
+from app.models.master import Project, ProjectContractor, ProjectStatus, Tower
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.project_repo import ProjectRepository
 from app.schemas.master import (
@@ -101,6 +104,20 @@ class ProjectService:
                 r.assigned_scope = scope_by_pid.get(r.project_id)
         return responses
 
+    async def set_status(
+        self, project: Project, status: ProjectStatus, user: User
+    ) -> ProjectResponse:
+        """The owning client admin sets the project's lifecycle status.
+        Completing a project frees its team members for reassignment."""
+        if not is_owning_client_admin(user, project):
+            raise PermissionDeniedError(
+                "Only the client admin can change the project status"
+            )
+        project.status = status
+        await self.session.flush()
+        await self.session.refresh(project)
+        return ProjectResponse.model_validate(project)
+
     async def list_towers(self, project: Project) -> list[TowerResponse]:
         towers = await self.repo.list_towers(project.project_id)
         return [TowerResponse.model_validate(t) for t in towers]
@@ -129,5 +146,6 @@ class ProjectService:
             is_contractor_admin=await is_contractor_admin_for(
                 self.session, user, project
             ),
+            project_role=await caller_project_role(self.session, user, project),
         )
         return ProjectDetailResponse(**base.model_dump(), access=access)

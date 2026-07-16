@@ -12,6 +12,7 @@ import type {
   ProjectMember,
   ProjectMemberCreate,
   ProjectResponse,
+  ProjectStatus,
   TowerResponse,
 } from '../types/master';
 
@@ -32,6 +33,12 @@ export const projectsApi = {
 
   towers(id: number): Promise<TowerResponse[]> {
     return api.get<TowerResponse[]>(`/projects/${id}/towers`).then((r) => r.data);
+  },
+
+  // Owning CLIENT_ADMIN sets the lifecycle status. Completing a project frees
+  // its team members for reassignment.
+  updateStatus(id: number, status: ProjectStatus): Promise<ProjectResponse> {
+    return api.patch<ProjectResponse>(`/projects/${id}/status`, { status }).then((r) => r.data);
   },
 
   // ── Members ──────────────────────────────────────────────────────────────

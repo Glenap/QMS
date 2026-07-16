@@ -21,6 +21,7 @@ from app.models.auth import (
     TokenBlacklist,
     User,
 )
+from app.models.master import Project, ProjectStatus
 
 
 class AuthRepository:
@@ -301,6 +302,24 @@ class AuthRepository:
             select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)
         )
         return list(result.scalars().all())
+
+    async def active_project_for_user(
+        self, user_id: int
+    ) -> tuple[int, str] | None:
+        """The (project_id, project_name) the user is currently assigned to on an
+        active project (status ACTIVE or ON_HOLD), or None if free. A member is on
+        at most one active project at a time; completing a project frees them."""
+        result = await self.session.execute(
+            select(Project.project_id, Project.project_name)
+            .join(ProjectMember, ProjectMember.project_id == Project.project_id)
+            .where(
+                ProjectMember.user_id == user_id,
+                Project.status.in_([ProjectStatus.ACTIVE, ProjectStatus.ON_HOLD]),
+            )
+            .limit(1)
+        )
+        row = result.first()
+        return (row[0], row[1]) if row else None
 
     async def get_pending_invitations_by_project(self, project_id: int) -> list:
         result = await self.session.execute(

@@ -1,6 +1,7 @@
 // Testing labs + their confirmation handshake.
 
 import type { ConfirmationStatus } from './confirmation';
+import type { ApprovalStatus } from './supplier';
 
 // app.models.master.LabType
 export type LabType = 'IN_HOUSE' | 'THIRD_PARTY';
@@ -43,6 +44,9 @@ export interface LabResponse {
   confirmed_at: string | null;
   is_blocked: boolean;
   block_reason: string | null;
+  registered_by: 'CONTRACTOR' | 'CLIENT';
+  approval_status: ApprovalStatus;
+  approval_reason: string | null;
   created_at: string;
 }
 

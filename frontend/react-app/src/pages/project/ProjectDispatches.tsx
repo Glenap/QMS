@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Send, Copy, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Send, Copy, Check, ClipboardCheck } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -7,11 +8,11 @@ import { Select } from '../../components/ui/Select';
 import { Input } from '../../components/ui/Input';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useCreateDispatch, useDispatches, useResendDispatch } from '../../queries/dispatches';
-import { usePours } from '../../queries/pours';
+import { useApprovedGrades } from '../../queries/mixDesigns';
+import { useSuppliers } from '../../queries/suppliers';
 import type { DispatchResponse, TruckStatus } from '../../types/master';
 
 const TRUCK_VARIANT: Record<TruckStatus, 'pass' | 'fail' | 'warn' | 'info' | 'pending'> = {
@@ -27,58 +28,42 @@ const vol = (v: number | null) => (v != null ? `${v} m³` : '—');
 
 export const ProjectDispatches: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
+  const navigate = useNavigate();
   const pid = project.project_id;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const dispatchesQuery = useDispatches(pid);
   const rows = dispatchesQuery.data ?? [];
-  const { data: pours = [] } = usePours(pid);
+  const { data: suppliers = [] } = useSuppliers(pid);
+  const { data: grades = [] } = useApprovedGrades(pid);
   const createDispatch = useCreateDispatch(pid);
   const resend = useResendDispatch(pid);
 
   const [showForm, setShowForm] = useState(false);
-  const [pourId, setPourId] = useState('');
+  const [supplierId, setSupplierId] = useState('');
+  const [gradeId, setGradeId] = useState('');
   const [volume, setVolume] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  // Only pours that still need concrete can be dispatched to — a completed pour
-  // is done, so it drops out of the picker.
-  const openPours = useMemo(
-    () => pours.filter((p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED'),
-    [pours],
+  // Only usable RMCs: not blocked, and (if client-registered) contractor-approved.
+  const openSuppliers = suppliers.filter(
+    (s) => !s.is_blocked && (s.approval_status === 'NOT_REQUIRED' || s.approval_status === 'ACCEPTED'),
   );
-
-  // A dispatch carries the supplier + grade of its pour, so picking the pour is
-  // all the QE needs — they just add the ordered volume.
-  const selectedPour = useMemo(
-    () => pours.find((p) => p.pour_id === Number(pourId)) ?? null,
-    [pours, pourId],
-  );
-
-  // Auto-fill the order with the pour's remaining volume (planned − delivered −
-  // outstanding) so the QE just confirms it. They can still override.
-  useEffect(() => {
-    if (selectedPour?.volume_remaining_cum != null) {
-      setVolume(String(selectedPour.volume_remaining_cum));
-    }
-  }, [selectedPour]);
-
-  const canSubmit = selectedPour !== null && volume.trim() !== '' && Number(volume) > 0;
+  const canSubmit = supplierId !== '' && gradeId !== '' && volume.trim() !== '' && Number(volume) > 0;
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPour) return;
+    if (!canSubmit) return;
     try {
       await createDispatch.mutateAsync({
-        pour_id: selectedPour.pour_id,
-        supplier_id: selectedPour.supplier_horizontal_id,
-        grade_id: selectedPour.grade_id,
+        supplier_id: Number(supplierId),
+        grade_id: Number(gradeId),
         volume_ordered_cum: Number(volume),
       });
       toast.success('Dispatch request sent to the supplier.');
       setShowForm(false);
-      setPourId('');
+      setSupplierId('');
+      setGradeId('');
       setVolume('');
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Unable to raise dispatch.'));
@@ -103,17 +88,13 @@ export const ProjectDispatches: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-page-header-block">
-        <div>
-          <h2 className="qms-section-heading-plain">Dispatches</h2>
-          <p className="qms-page-subtitle">RMC truck dispatches and their delivery status</p>
-        </div>
-        {isQE && (
+      {isQE && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setShowForm((s) => !s)}>
             New dispatch
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {dispatchesQuery.error && <ErrorBox>{getApiErrorMessage(dispatchesQuery.error, 'Unable to load dispatches.')}</ErrorBox>}
 
@@ -123,27 +104,27 @@ export const ProjectDispatches: React.FC = () => {
             <h3 className="qms-section-heading">Request a truck</h3>
             <div className="qms-grid-3">
               <Select
-                label="Pour"
+                label="RMC supplier"
                 required
-                value={pourId}
-                onChange={(e) => setPourId(e.target.value)}
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
                 options={[
-                  { label: openPours.length ? 'Select pour…' : 'No open pours — raise one first', value: '' },
-                  ...openPours.map((p) => ({
-                    label: `${p.pour_reference ?? `PC-${p.pour_id}`} · ${p.grade_name ?? '—'} · ${p.supplier_name ?? '—'}`
-                      + (p.volume_remaining_cum != null ? ` · ${p.volume_remaining_cum} m³ left` : ''),
-                    value: p.pour_id,
-                  })),
+                  { label: openSuppliers.length ? 'Select supplier…' : 'No suppliers yet', value: '' },
+                  ...openSuppliers.map((s) => ({ label: s.supplier_name, value: s.supplier_id })),
+                ]}
+              />
+              <Select
+                label="Grade"
+                required
+                value={gradeId}
+                onChange={(e) => setGradeId(e.target.value)}
+                options={[
+                  { label: grades.length ? 'Select grade…' : 'No approved mix designs — approve one first', value: '' },
+                  ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id })),
                 ]}
               />
               <Input
-                label="Grade / supplier"
-                value={selectedPour ? `${selectedPour.grade_name ?? '—'} — ${selectedPour.supplier_name ?? '—'}` : ''}
-                placeholder="Set by the pour"
-                disabled
-              />
-              <Input
-                label={`Volume ordered (m³)${selectedPour?.volume_remaining_cum != null ? ` · ${selectedPour.volume_remaining_cum} left on this pour` : ''}`}
+                label="Volume ordered (m³)"
                 type="number"
                 step="0.5"
                 min="0"
@@ -154,6 +135,7 @@ export const ProjectDispatches: React.FC = () => {
             </div>
             <p className="qms-text-sm text-muted qms-mt-8">
               The supplier is emailed a link to fill in the truck details — no login needed.
+              Once the delivery is accepted, record the pour from it.
             </p>
             <div className="qms-form-actions">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
@@ -180,36 +162,46 @@ export const ProjectDispatches: React.FC = () => {
               ) : rows.length === 0 ? (
                 <tr><td colSpan={isQE ? 7 : 6} className="text-muted">No dispatches yet.</td></tr>
               ) : (
-                rows.map((d) => (
-                  <tr key={d.dispatch_id}>
-                    <td className="font-medium">{d.supplier_name ?? '—'}</td>
-                    <td>{d.grade_name ?? '—'}</td>
-                    <td>{vol(d.volume_ordered_cum)}</td>
-                    <td>{vol(d.volume_received_cum)}</td>
-                    <td>{d.truck?.vehicle_number ?? '—'}</td>
-                    <td>
-                      {d.truck
-                        ? <Badge variant={TRUCK_VARIANT[d.truck.status]}>{TRUCK_LABEL[d.truck.status]}</Badge>
-                        : '—'}
-                    </td>
-                    {isQE && (
-                      <td className="qms-nowrap">
-                        {d.truck?.status === 'PENDING' && (
-                          <>
-                            <Button variant="ghost" size="sm" icon={copiedId === d.dispatch_id ? <Check size={14} /> : <Copy size={14} />} onClick={() => handleCopy(d)}>
-                              {copiedId === d.dispatch_id ? 'Copied' : 'Link'}
-                            </Button>
-                            <Button variant="ghost" size="sm" icon={<Send size={14} />}
-                              disabled={resend.isPending && resend.variables === d.dispatch_id}
-                              onClick={() => handleResend(d)}>
-                              {resend.isPending && resend.variables === d.dispatch_id ? 'Sending…' : 'Resend'}
-                            </Button>
-                          </>
-                        )}
+                rows.map((d) => {
+                  const canRecordPour = d.truck?.status === 'ACCEPTED' && d.pour_id == null;
+                  return (
+                    <tr key={d.dispatch_id}>
+                      <td className="font-medium">{d.supplier_name ?? '—'}</td>
+                      <td>{d.grade_name ?? '—'}</td>
+                      <td>{vol(d.volume_ordered_cum)}</td>
+                      <td>{vol(d.volume_received_cum)}</td>
+                      <td>{d.truck?.vehicle_number ?? '—'}</td>
+                      <td>
+                        {d.truck
+                          ? <Badge variant={TRUCK_VARIANT[d.truck.status]}>{TRUCK_LABEL[d.truck.status]}</Badge>
+                          : '—'}
                       </td>
-                    )}
-                  </tr>
-                ))
+                      {isQE && (
+                        <td className="qms-nowrap">
+                          {d.truck?.status === 'PENDING' && (
+                            <>
+                              <Button variant="ghost" size="sm" icon={copiedId === d.dispatch_id ? <Check size={14} /> : <Copy size={14} />} onClick={() => handleCopy(d)}>
+                                {copiedId === d.dispatch_id ? 'Copied' : 'Link'}
+                              </Button>
+                              <Button variant="ghost" size="sm" icon={<Send size={14} />}
+                                disabled={resend.isPending && resend.variables === d.dispatch_id}
+                                onClick={() => handleResend(d)}>
+                                {resend.isPending && resend.variables === d.dispatch_id ? 'Sending…' : 'Resend'}
+                              </Button>
+                            </>
+                          )}
+                          {canRecordPour && (
+                            <Button variant="ghost" size="sm" icon={<ClipboardCheck size={14} />}
+                              onClick={() => navigate(`/app/projects/${pid}/pours/new?dispatch=${d.dispatch_id}`)}>
+                              Record pour
+                            </Button>
+                          )}
+                          {d.pour_id != null && <span className="qms-text-sm text-muted">Poured</span>}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
