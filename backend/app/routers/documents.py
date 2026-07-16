@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
 from app.core.exceptions import NotFoundError
-from app.core.project_access import ensure_project_role, require_project
+from app.core.project_access import require_project, require_project_role
 from app.core.storage import storage
 from app.database.session import get_db
 from app.models.auth import ProjectRole, User
@@ -59,14 +59,13 @@ async def upload_document(
 async def review_document(
     document_id: int,
     data: DocumentReview,
-    project: Project = Depends(require_project),
+    project: Project = Depends(
+        require_project_role(ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER)
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """A QE or PM approves / rejects an uploaded document."""
-    await ensure_project_role(
-        db, current_user, project, ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER
-    )
     return await DocumentService(db).review(project, document_id, data, current_user)
 
 

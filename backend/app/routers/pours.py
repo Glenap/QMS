@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.project_access import ensure_project_role, require_project
+from app.core.project_access import require_project, require_project_role
 from app.database.session import get_db
 from app.models.auth import ProjectRole, User
 from app.models.master import Project
@@ -21,11 +21,10 @@ router = APIRouter(prefix="/projects", tags=["pours"])
 @router.post("/{project_id}/pours", response_model=PourResponse, status_code=201)
 async def create_pour(
     data: PourCreate,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await PourService(db).create(data, project, current_user)
 
 

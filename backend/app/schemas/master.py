@@ -247,6 +247,46 @@ class LabResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Org-wide directories (all RMCs / labs across the caller's projects)
+# ---------------------------------------------------------------------------
+
+class SupplierDirectoryItem(BaseModel):
+    """One RMC in the organisation-wide directory: which project it's registered
+    for and which contractor holds it. Read-only cross-project roll-up."""
+
+    supplier_id: int
+    supplier_name: str
+    project_id: int | None
+    project_name: str | None
+    contractor_org_id: int
+    contractor_org_name: str | None
+    contact_email: str | None
+    plant_location: str | None
+    status: str
+    approval_status: str
+    registered_by: str
+    is_blocked: bool
+
+
+class LabDirectoryItem(BaseModel):
+    """One testing lab in the organisation-wide directory (project + contractor)."""
+
+    lab_id: int
+    lab_name: str
+    lab_type: LabType
+    project_id: int | None
+    project_name: str | None
+    contractor_org_id: int
+    contractor_org_name: str | None
+    contact_email: str | None
+    city: str | None
+    status: str
+    approval_status: str
+    registered_by: str
+    is_blocked: bool
+
+
+# ---------------------------------------------------------------------------
 # Project membership, contractors, and access (project-scoped model)
 # ---------------------------------------------------------------------------
 

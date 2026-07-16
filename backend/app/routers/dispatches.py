@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.project_access import ensure_project_role, require_project
+from app.core.project_access import require_project, require_project_role
 from app.database.session import get_db
 from app.models.auth import ProjectRole, User
 from app.models.master import Project
@@ -41,11 +41,10 @@ router = APIRouter(prefix="/projects", tags=["dispatches"])
 )
 async def create_dispatch(
     data: DispatchCreate,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).create(data, project, current_user)
 
 
@@ -74,11 +73,10 @@ async def get_dispatch(
 )
 async def resend_dispatch(
     dispatch_id: int,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).resend(project, dispatch_id, current_user)
 
 
@@ -88,11 +86,9 @@ async def resend_dispatch(
 @router.get("/{project_id}/gate/{token}", response_model=GateTruckView)
 async def gate_lookup(
     token: str,
-    project: Project = Depends(require_project),
-    current_user: User = Depends(get_current_user),
+    project: Project = Depends(require_project_role(ProjectRole.SUPERVISOR)),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).gate_view(project, token)
 
 
@@ -100,22 +96,19 @@ async def gate_lookup(
 async def gate_arrive(
     token: str,
     data: TruckArrive,
-    project: Project = Depends(require_project),
-    current_user: User = Depends(get_current_user),
+    project: Project = Depends(require_project_role(ProjectRole.SUPERVISOR)),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).arrive(project, token, data)
 
 
 @router.post("/{project_id}/gate/{token}/accept", response_model=GateTruckView)
 async def gate_accept(
     token: str,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.SUPERVISOR)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).accept(project, token, current_user)
 
 
@@ -123,11 +116,10 @@ async def gate_accept(
 async def gate_reject(
     token: str,
     data: TruckReject,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.SUPERVISOR)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).reject(project, token, current_user, data)
 
 
@@ -137,12 +129,11 @@ async def gate_reject(
 async def gate_action_required(
     token: str,
     data: ActionRequired,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.SUPERVISOR)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Supervisor flags a mismatch on an admitted truck → the QE's inbox."""
-    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).raise_action(project, token, data, current_user)
 
 
@@ -151,22 +142,18 @@ async def gate_action_required(
 
 @router.get("/{project_id}/qe-inbox", response_model=list[QEReviewItem])
 async def qe_inbox(
-    project: Project = Depends(require_project),
-    current_user: User = Depends(get_current_user),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     db: AsyncSession = Depends(get_db),
 ):
     """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE)."""
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).qe_inbox(project)
 
 
 @router.get("/{project_id}/qe-inbox/count", response_model=QEInboxCount)
 async def qe_inbox_count(
-    project: Project = Depends(require_project),
-    current_user: User = Depends(get_current_user),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     db: AsyncSession = Depends(get_db),
 ):
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return QEInboxCount(count=await DispatchService(db).qe_inbox_count(project))
 
 
@@ -176,13 +163,12 @@ async def qe_inbox_count(
 async def record_insitu(
     dispatch_id: int,
     data: InsituSubmit,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """QE records the in-situ slump test + decision; APPROVE accepts + credits the
     pour (slump must pass), REJECT notifies the RMC."""
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).record_insitu(
         project, dispatch_id, data, current_user
     )

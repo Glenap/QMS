@@ -88,17 +88,13 @@ export const ProjectDispatches: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-page-header-block">
-        <div>
-          <h2 className="qms-section-heading-plain">Dispatches</h2>
-          <p className="qms-page-subtitle">RMC truck dispatches and their delivery status</p>
-        </div>
-        {isQE && (
+      {isQE && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setShowForm((s) => !s)}>
             New dispatch
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {dispatchesQuery.error && <ErrorBox>{getApiErrorMessage(dispatchesQuery.error, 'Unable to load dispatches.')}</ErrorBox>}
 

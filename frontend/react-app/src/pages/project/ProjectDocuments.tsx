@@ -29,6 +29,7 @@ const APPROVAL_LABEL: Record<DocumentApprovalStatus, string> = {
 
 const CATEGORY_OPTIONS = [
   { label: 'No category', value: '' },
+  { label: 'Drawing', value: 'DRAWING' },
   { label: 'Mix design', value: 'MIX_DESIGN' },
   { label: 'RMC detail', value: 'RMC_DETAIL' },
   { label: 'Pour record', value: 'POUR_RECORD' },
@@ -85,6 +86,16 @@ export const ProjectDocuments: React.FC = () => {
   const [fileName, setFileName] = useState('');
   const [category, setCategory] = useState('');
   const [title, setTitle] = useState('');
+
+  // Drawing comparison — two PDFs in, a highlighted diff out. The comparison
+  // model is still being prepared, so the button is live but only signals intent
+  // for now; the backend diff will be wired in once the model ships.
+  const [drawAName, setDrawAName] = useState('');
+  const [drawBName, setDrawBName] = useState('');
+  const handleCompare = (e: React.FormEvent) => {
+    e.preventDefault();
+    toast.info('Drawing comparison is being prepared — it will highlight what changed between the two drawings once the model is live.');
+  };
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,13 +162,20 @@ export const ProjectDocuments: React.FC = () => {
         <form onSubmit={handleUpload} className="qms-grid-2">
           <div>
             <label htmlFor="doc-file" className="qms-input-label">File</label>
-            <input
-              id="doc-file"
-              ref={fileRef}
-              type="file"
-              onChange={(e) => setFileName(e.target.value)}
-              accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.csv,.xls,.xlsx,.doc,.docx,.txt"
-            />
+            <label className="qms-file-btn">
+              <Upload size={16} />
+              <span className="qms-file-btn-text">
+                {fileName ? fileName.split(/[\\/]/).pop() : 'Choose a file…'}
+              </span>
+              <input
+                id="doc-file"
+                ref={fileRef}
+                type="file"
+                hidden
+                onChange={(e) => setFileName(e.target.value)}
+                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.csv,.xls,.xlsx,.doc,.docx,.txt"
+              />
+            </label>
           </div>
           <Select
             label="Category"
@@ -181,6 +199,39 @@ export const ProjectDocuments: React.FC = () => {
           PDF, images, spreadsheets and documents up to 25 MB.
         </p>
       </Card>
+
+      {category === 'DRAWING' && (
+        <Card className="qms-form-section">
+          <h3 className="qms-section-heading-plain qms-mb-12">Compare two drawings</h3>
+          <p className="text-muted qms-doc-hint" style={{ marginTop: 0, marginBottom: 12 }}>
+            Upload two PDF drawings (e.g. a revision and its predecessor) to highlight what
+            changed. The comparison model is being prepared — this will light up soon.
+          </p>
+          <form onSubmit={handleCompare} className="qms-grid-2">
+            <div>
+              <div className="qms-input-label">Drawing A (PDF)</div>
+              <label className="qms-file-btn">
+                <Upload size={16} />
+                <span className="qms-file-btn-text">{drawAName ? drawAName.split(/[\\/]/).pop() : 'Choose drawing A…'}</span>
+                <input type="file" accept="application/pdf" hidden onChange={(e) => setDrawAName(e.target.value)} />
+              </label>
+            </div>
+            <div>
+              <div className="qms-input-label">Drawing B (PDF)</div>
+              <label className="qms-file-btn">
+                <Upload size={16} />
+                <span className="qms-file-btn-text">{drawBName ? drawBName.split(/[\\/]/).pop() : 'Choose drawing B…'}</span>
+                <input type="file" accept="application/pdf" hidden onChange={(e) => setDrawBName(e.target.value)} />
+              </label>
+            </div>
+            <div className="qms-field-end">
+              <Button type="submit" variant="outline" disabled={!drawAName || !drawBName} icon={<Search size={16} />}>
+                Compare drawings
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       <Card className="qms-form-section" padding="none">
         <div className="qms-card-header">

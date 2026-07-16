@@ -17,6 +17,8 @@ import { ProjectMasterForm } from './pages/ProjectMasterForm';
 import { AssignedProjects } from './pages/AssignedProjects';
 import { Profile } from './pages/Profile';
 import { Team } from './pages/Team';
+import { OrgSuppliers } from './pages/OrgSuppliers';
+import { OrgLabs } from './pages/OrgLabs';
 
 // Project workspace (everything below is scoped to one project)
 import { ProjectLayout } from './components/layout/ProjectLayout';
@@ -40,6 +42,8 @@ import { GateScan } from './pages/project/GateScan';
 import { QEInbox } from './pages/project/QEInbox';
 import { Alerts } from './pages/project/Alerts';
 import { NCRDashboard } from './pages/project/NCRDashboard';
+import { Retests } from './pages/project/Retests';
+import { ConformanceAnalyser } from './pages/project/ConformanceAnalyser';
 import { Chatbot } from './pages/project/Chatbot';
 
 function App() {
@@ -65,6 +69,8 @@ function App() {
             <Route path="projects/new" element={<ProjectMasterForm />} />
             <Route path="assigned" element={<AssignedProjects />} />
             <Route path="team" element={<Team />} />
+            <Route path="suppliers" element={<OrgSuppliers />} />
+            <Route path="labs" element={<OrgLabs />} />
             <Route path="profile" element={<Profile />} />
 
             {/* Project workspace — all pages scoped to :projectId */}
@@ -81,6 +87,8 @@ function App() {
               <Route path="qe-inbox" element={<QEInbox />} />
               <Route path="alerts" element={<Alerts />} />
               <Route path="ncr" element={<NCRDashboard />} />
+              <Route path="retests" element={<Retests />} />
+              <Route path="conformance" element={<ConformanceAnalyser />} />
               <Route path="chatbot" element={<Chatbot />} />
               <Route path="team" element={<ProjectTeam />} />
               <Route path="contractors" element={<ProjectContractors />} />

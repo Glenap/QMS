@@ -2,9 +2,9 @@
 Integration tests for Phase 5 — the NCR lifecycle:
 
   An auto-raised NCR (from a failing cube test) is reviewed → a root cause is
-  recorded → corrective actions are logged and worked → penalties are applied →
-  the NCR is closed (only once root cause + all actions are done) and can be
-  reopened.
+  recorded → corrective actions are logged and worked → NDT/core retests are
+  ordered and their results recorded → the RMC is notified → the NCR is closed
+  (only once root cause + all actions are done) and can be reopened.
 
 Plus RBAC (only the QE drives the lifecycle), the OPEN→UNDER_REVIEW→CLOSED
 transition guards, and the list/detail roll-ups.
@@ -44,10 +44,18 @@ def _add_action(client, token, pid, ncr_id, **body):
     )
 
 
-def _add_penalty(client, token, pid, ncr_id, **body):
-    body.setdefault("penalty_type", "RATE_REDUCTION")
+def _order_retest(client, token, pid, ncr_id, **body):
+    body.setdefault("retest_type", "CORE_CUTTING")
     return client.post(
-        f"{API}/projects/{pid}/ncrs/{ncr_id}/penalties",
+        f"{API}/projects/{pid}/ncrs/{ncr_id}/retests",
+        json=body,
+        headers=bearer(token),
+    )
+
+
+def _notify_rmc(client, token, pid, ncr_id, **body):
+    return client.post(
+        f"{API}/projects/{pid}/ncrs/{ncr_id}/notify-rmc",
         json=body,
         headers=bearer(token),
     )
@@ -64,7 +72,8 @@ class TestNCRLifecycle:
         assert ncr["status"] == "OPEN"
         assert ncr["closed_at"] is None
         assert ncr["corrective_actions"] == []
-        assert ncr["penalties"] == []
+        assert ncr["retests"] == []
+        assert ncr["rmc_notifications"] == []
 
     async def test_review_records_status_and_root_cause(self, client, db_session):
         _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
@@ -132,7 +141,7 @@ class TestNCRLifecycle:
 
     async def test_cannot_edit_root_cause_of_closed_ncr(self, client, db_session):
         """A CLOSED NCR is frozen — its root cause can't be amended without
-        reopening (mirrors the corrective-action/penalty freeze)."""
+        reopening (mirrors the corrective-action/retest freeze)."""
         _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
         await _patch_ncr(
             client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="Low cement"
@@ -210,27 +219,98 @@ class TestCorrectiveActions:
         assert resp.status_code == 403
 
 
-class TestPenalties:
-    async def test_apply_penalty_appears_in_detail(self, client, db_session):
+class TestRetests:
+    async def test_order_retest_appears_in_detail(self, client, db_session):
         _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
-        resp = await _add_penalty(
-            client, qe_token, pid, ncr_id,
-            penalty_type="RATE_REDUCTION", amount=50000, description="10% rate cut",
-        )
+        resp = await _order_retest(client, qe_token, pid, ncr_id, retest_type="CORE_CUTTING")
         assert resp.status_code == 201, resp.text
-        assert resp.json()["penalty_type"] == "RATE_REDUCTION"
+        assert resp.json()["retest_type"] == "CORE_CUTTING"
+        assert resp.json()["result"] is None  # pending until a result is recorded
+        retest_id = resp.json()["retest_id"]
 
         ncr = (
             await client.get(
                 f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
             )
         ).json()
-        assert ncr["penalty_count"] == 1
-        assert ncr["penalties"][0]["amount"] == 50000
+        assert ncr["retest_count"] == 1
+        assert ncr["open_retest_count"] == 1
+        assert ncr["retests"][0]["retest_id"] == retest_id
 
-    async def test_non_qe_cannot_apply_penalty(self, client, db_session):
+    async def test_record_retest_result_completes_it(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        retest_id = (await _order_retest(client, qe_token, pid, ncr_id)).json()["retest_id"]
+        resp = await client.patch(
+            f"{API}/projects/{pid}/ncrs/{ncr_id}/retests/{retest_id}",
+            json={
+                "result": "PASS", "observed_strength_mpa": 31.5,
+                "required_strength_mpa": 30.0, "test_date": "2026-08-20",
+            },
+            headers=bearer(qe_token),
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["result"] == "PASS"
+        assert resp.json()["completed_at"] is not None
+
+        ncr = (
+            await client.get(
+                f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
+            )
+        ).json()
+        assert ncr["open_retest_count"] == 0
+
+    async def test_retest_lists_on_project_retests_page(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _order_retest(client, qe_token, pid, ncr_id)
+        rows = (
+            await client.get(f"{API}/projects/{pid}/retests", headers=bearer(qe_token))
+        ).json()
+        assert len(rows) == 1
+        assert rows[0]["ncr_id"] == ncr_id
+        assert rows[0]["grade_name"] == "M30"
+
+    async def test_cannot_order_retest_on_closed_ncr(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="x")
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        resp = await _order_retest(client, qe_token, pid, ncr_id)
+        assert resp.status_code == 400
+
+    async def test_non_qe_cannot_order_retest(self, client, db_session):
         contractor_token, _, pid, ncr_id = await _open_ncr(client, db_session)
-        resp = await _add_penalty(client, contractor_token, pid, ncr_id)
+        resp = await _order_retest(client, contractor_token, pid, ncr_id)
+        assert resp.status_code == 403
+
+
+class TestRmcNotification:
+    async def test_notify_rmc_logs_notification(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _notify_rmc(
+            client, qe_token, pid, ncr_id,
+            subject="NCR raised on your supply", message="Please review the batch records.",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["subject"] == "NCR raised on your supply"
+        assert resp.json()["supplier_name"] == "UltraTech RMC"
+
+        ncr = (
+            await client.get(
+                f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
+            )
+        ).json()
+        assert len(ncr["rmc_notifications"]) == 1
+
+    async def test_notify_rmc_auto_composes_a_body_when_blank(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _notify_rmc(client, qe_token, pid, ncr_id)
+        assert resp.status_code == 201, resp.text
+        # An auto-composed subject + message are filled in from the NCR context.
+        assert resp.json()["subject"]
+        assert "MPa" in resp.json()["message"]
+
+    async def test_non_qe_cannot_notify_rmc(self, client, db_session):
+        contractor_token, _, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _notify_rmc(client, contractor_token, pid, ncr_id)
         assert resp.status_code == 403
 
 
@@ -238,11 +318,12 @@ class TestNCRListSummary:
     async def test_list_carries_lifecycle_counts(self, client, db_session):
         _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
         await _add_action(client, qe_token, pid, ncr_id)
-        await _add_penalty(client, qe_token, pid, ncr_id)
+        await _order_retest(client, qe_token, pid, ncr_id)
         rows = (
             await client.get(f"{API}/projects/{pid}/ncrs", headers=bearer(qe_token))
         ).json()
         assert len(rows) == 1
         assert rows[0]["corrective_action_count"] == 1
         assert rows[0]["open_action_count"] == 1
-        assert rows[0]["penalty_count"] == 1
+        assert rows[0]["retest_count"] == 1
+        assert rows[0]["open_retest_count"] == 1

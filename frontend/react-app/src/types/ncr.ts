@@ -6,8 +6,10 @@ import type { ResultStatus } from './cube';
 export type NCRStatus = 'OPEN' | 'UNDER_REVIEW' | 'CLOSED';
 // app.models.quality.ActionStatus
 export type ActionStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
-// app.models.quality.PenaltyType
-export type PenaltyType = 'RATE_REDUCTION' | 'REJECTION' | 'DEMOLITION';
+// app.models.quality.RetestType — IS-456 in-situ verification method.
+export type RetestType = 'CORE_CUTTING' | 'REBOUND_HAMMER' | 'UPV';
+// app.models.quality.RetestResult
+export type RetestResult = 'PASS' | 'FAIL';
 
 export interface NCRResponse {
   ncr_id: number;
@@ -31,7 +33,8 @@ export interface NCRResponse {
   component_type: string | null;
   corrective_action_count: number;
   open_action_count: number;
-  penalty_count: number;
+  retest_count: number;
+  open_retest_count: number;
 }
 
 export interface NCRUpdate {
@@ -63,24 +66,78 @@ export interface CorrectiveActionResponse {
   created_at: string;
 }
 
-export interface PenaltyCreate {
-  penalty_type: PenaltyType;
-  amount?: number | null;
-  description?: string | null;
+// ── Retests (IS-456 in-situ verification) ────────────────────────────────────
+
+export interface RetestCreate {
+  retest_type: RetestType;
+  notes?: string | null;
 }
 
-export interface PenaltyResponse {
-  penalty_id: number;
+export interface RetestResultUpdate {
+  result?: RetestResult | null;
+  test_date?: string | null; // ISO date
+  observed_strength_mpa?: number | null;
+  required_strength_mpa?: number | null;
+  lab_id?: number | null;
+  report_document_id?: number | null;
+  notes?: string | null;
+}
+
+export interface RetestResponse {
+  retest_id: number;
   ncr_id: number;
-  penalty_type: PenaltyType;
-  amount: number | null;
-  description: string | null;
-  applied_by: number | null;
-  applied_by_name: string | null;
-  applied_at: string;
+  retest_type: RetestType;
+  result: RetestResult | null;
+  test_date: string | null;
+  observed_strength_mpa: number | null;
+  required_strength_mpa: number | null;
+  lab_id: number | null;
+  lab_name: string | null;
+  report_document_id: number | null;
+  notes: string | null;
+  ordered_by: number | null;
+  ordered_by_name: string | null;
+  created_at: string;
+  completed_at: string | null;
+  ncr_number: string | null;
+  grade_name: string | null;
+}
+
+// ── RMC notifications (email the plant about an NCR) ──────────────────────────
+
+export interface NcrNotifyRmc {
+  subject?: string | null;
+  message?: string | null;
+  document_id?: number | null;
+}
+
+export interface NcrRmcNotificationResponse {
+  notification_id: number;
+  ncr_id: number;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  subject: string;
+  message: string;
+  report_document_id: number | null;
+  sent_by: number | null;
+  sent_by_name: string | null;
+  sent_at: string;
+}
+
+// ── AI pattern insight (deterministic, cross-NCR) ────────────────────────────
+
+export interface NcrPatternResponse {
+  supplier_name: string | null;
+  grade_name: string | null;
+  window_days: number;
+  supplier_grade_ncr_count: number;
+  supplier_ncr_count: number;
+  recurring_low_28d_count: number;
+  summary: string;
 }
 
 export interface NCRDetailResponse extends NCRResponse {
   corrective_actions: CorrectiveActionResponse[];
-  penalties: PenaltyResponse[];
+  retests: RetestResponse[];
+  rmc_notifications: NcrRmcNotificationResponse[];
 }

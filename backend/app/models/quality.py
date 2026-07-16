@@ -41,10 +41,17 @@ class NCRStatus(str, enum.Enum):
     CLOSED = "CLOSED"
 
 
-class PenaltyType(str, enum.Enum):
-    RATE_REDUCTION = "RATE_REDUCTION"
-    REJECTION = "REJECTION"
-    DEMOLITION = "DEMOLITION"
+class RetestType(str, enum.Enum):
+    """IS-456 in-situ verification of hardened concrete when cube tests fail."""
+
+    CORE_CUTTING = "CORE_CUTTING"
+    REBOUND_HAMMER = "REBOUND_HAMMER"
+    UPV = "UPV"  # Ultrasonic pulse velocity
+
+
+class RetestResult(str, enum.Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
 
 
 class ActionStatus(str, enum.Enum):
@@ -154,7 +161,10 @@ class NCR(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     cube_test: Mapped["CubeTest"] = relationship("CubeTest", back_populates="ncr")
-    penalties: Mapped[list["Penalty"]] = relationship("Penalty", back_populates="ncr")
+    retests: Mapped[list["Retest"]] = relationship("Retest", back_populates="ncr")
+    rmc_notifications: Mapped[list["NcrRmcNotification"]] = relationship(
+        "NcrRmcNotification", back_populates="ncr"
+    )
     corrective_actions: Mapped[list["CorrectiveAction"]] = relationship(
         "CorrectiveAction", back_populates="ncr"
     )
@@ -163,27 +173,87 @@ class NCR(Base):
     )
 
 
-class Penalty(Base):
-    __tablename__ = "penalties"
-    __table_args__ = {"schema": "quality"}
+class Retest(Base):
+    """An IS-456 in-situ verification ordered on an NCR when cube tests fail.
 
-    penalty_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    The QE orders a retest (a corrective measure) — core cutting / rebound
+    hammer / UPV — and later records its result. ``result`` is null while the
+    retest is pending; a PASS supports closing the NCR without demolition.
+    """
+
+    __tablename__ = "retests"
+    __table_args__ = (
+        Index("idx_retest_ncr", "ncr_id"),
+        {"schema": "quality"},
+    )
+
+    retest_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     ncr_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("quality.ncrs.ncr_id"), nullable=False
     )
-    penalty_type: Mapped[PenaltyType] = mapped_column(
-        SAEnum(PenaltyType, schema="quality"), nullable=False
+    retest_type: Mapped[RetestType] = mapped_column(
+        SAEnum(RetestType, schema="quality"), nullable=False
     )
-    amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    applied_by: Mapped[int | None] = mapped_column(
+    result: Mapped[RetestResult | None] = mapped_column(
+        SAEnum(RetestResult, schema="quality"), nullable=True
+    )
+    test_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    observed_strength_mpa: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    required_strength_mpa: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    lab_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.testing_labs.lab_id"), nullable=True
+    )
+    report_document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ordered_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=True
     )
-    applied_at: Mapped[datetime] = mapped_column(
+    performed_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    ncr: Mapped["NCR"] = relationship("NCR", back_populates="retests")
+
+
+class NcrRmcNotification(Base):
+    """Audit trail of a QE emailing the RMC about an NCR (with an optional PDF
+    report attached). Replaces the old money-penalty record — the lever is now a
+    formal notification to the plant, not a deduction."""
+
+    __tablename__ = "ncr_rmc_notifications"
+    __table_args__ = (
+        Index("idx_ncr_rmc_notification_ncr", "ncr_id"),
+        {"schema": "quality"},
+    )
+
+    notification_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ncr_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("quality.ncrs.ncr_id"), nullable=False
+    )
+    supplier_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.suppliers.supplier_id"), nullable=True
+    )
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    report_document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
+    sent_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
-    ncr: Mapped["NCR"] = relationship("NCR", back_populates="penalties")
+    ncr: Mapped["NCR"] = relationship("NCR", back_populates="rmc_notifications")
 
 
 class CorrectiveAction(Base):
@@ -287,9 +357,10 @@ class AlertStatus(str, enum.Enum):
 
 
 class Alert(Base):
-    """An IS-456/10262 quality alert for the QE + PM: a strength result that
-    failed the individual criterion, a moving-average drifting below the
-    acceptance floor, or a downward trend. Feeds the alert bell/feed."""
+    """An IS-456/10262 quality alert for the QE + PM: the 4-sample moving average
+    drifting below the acceptance floor (STRENGTH_GROUP). Individual failures
+    raise NCRs, not alerts, so the feed holds only what NCRs don't catch. Feeds
+    the alert bell/feed."""
 
     __tablename__ = "alerts"
     __table_args__ = (

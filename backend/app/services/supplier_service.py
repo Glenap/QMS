@@ -10,6 +10,7 @@ the registration.
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -22,7 +23,7 @@ from app.core.exceptions import (
 )
 from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Document, Project, Supplier
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.supplier_repo import SupplierRepository
@@ -32,6 +33,7 @@ from app.schemas.master import (
     SupplierConfirmationView,
     SupplierConfirmSubmit,
     SupplierCreate,
+    SupplierDirectoryItem,
     SupplierResponse,
 )
 
@@ -138,6 +140,38 @@ class SupplierService:
             order_by=Supplier.created_at.desc(),
         )
         return [await self._to_response(s) for s in suppliers]
+
+    async def list_for_org(self, user: User) -> list[SupplierDirectoryItem]:
+        """Every RMC visible to the caller's organisation, across projects. A
+        client org sees all RMCs registered on its projects (and which contractor
+        holds each); a contractor org sees the RMCs it holds. Read-only."""
+        stmt = select(Supplier, Project.project_name).join(
+            Project, Project.project_id == Supplier.project_id, isouter=True
+        )
+        if user.role in (UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER):
+            stmt = stmt.where(Project.org_id == user.org_id)
+        else:
+            stmt = stmt.where(Supplier.contractor_org_id == user.org_id)
+        rows = (
+            await self.session.execute(stmt.order_by(Supplier.created_at.desc()))
+        ).all()
+        return [
+            SupplierDirectoryItem(
+                supplier_id=s.supplier_id,
+                supplier_name=s.supplier_name,
+                project_id=s.project_id,
+                project_name=project_name,
+                contractor_org_id=s.contractor_org_id,
+                contractor_org_name=await self._org_name(s.contractor_org_id),
+                contact_email=s.contact_email,
+                plant_location=s.plant_location,
+                status=s.status,
+                approval_status=s.approval_status,
+                registered_by=s.registered_by,
+                is_blocked=s.is_blocked,
+            )
+            for s, project_name in rows
+        ]
 
     async def resend_confirmation(
         self, project: Project, supplier_id: int, user: User

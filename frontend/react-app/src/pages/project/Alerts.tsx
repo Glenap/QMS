@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Bell, CheckCircle, Mail, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Mail, AlertTriangle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -94,11 +94,6 @@ export const Alerts: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-pw-header">
-        <h1 className="qms-pw-title"><Bell size={20} /> Quality alerts</h1>
-        <p className="text-muted">IS 456 / IS 10262 strength alerts — acknowledge and notify the RMC.</p>
-      </div>
-
       {error && <ErrorBox>{getApiErrorMessage(error, 'Unable to load alerts.')}</ErrorBox>}
 
       {isPending ? (

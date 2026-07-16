@@ -18,6 +18,8 @@ Capabilities:
     participating org
 """
 
+from collections.abc import Callable
+
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -189,6 +191,32 @@ async def ensure_project_role(
     if role not in allowed:
         names = " or ".join(_ROLE_LABELS.get(r.value, r.value.lower()) for r in roles)
         raise PermissionDeniedError(f"Only the project's {names} can do this")
+
+
+def require_project_role(*roles: ProjectRole) -> Callable:
+    """Dependency factory: returns the project only if the caller may view it AND
+    holds one of the given per-project designations.
+
+    The per-project mirror of ``require_role`` (org-level) — routers declare the
+    designation requirement instead of calling ``ensure_project_role`` inline:
+
+        @router.post("/{project_id}/pours")
+        async def create_pour(
+            project: Project = Depends(
+                require_project_role(ProjectRole.QUALITY_ENGINEER)
+            ),
+            ...
+        ):
+    """
+    async def checker(
+        project: Project = Depends(require_project),
+        current_user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> Project:
+        await ensure_project_role(db, current_user, project, *roles)
+        return project
+
+    return checker
 
 
 async def ensure_can_block_entities(

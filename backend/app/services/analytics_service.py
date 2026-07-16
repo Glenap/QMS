@@ -134,17 +134,18 @@ class AnalyticsService:
         date_to: date | None = None,
         grade_id: int | None = None,
         tower_id: int | None = None,
+        contractor_id: int | None = None,
     ) -> list[SupplierScore]:
         pid = project.project_id
         # Pour-side filters apply to the pour's own date; quality-side to the
         # test date — each metric is filtered by the date it actually has.
         pour_conds = self._dim_conds(
             Pour.pour_date, date_from=date_from, date_to=date_to,
-            grade_id=grade_id, tower_id=tower_id,
+            grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
         )
         test_conds = self._dim_conds(
             CubeTest.test_date, date_from=date_from, date_to=date_to,
-            grade_id=grade_id, tower_id=tower_id,
+            grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
         )
         # Pour-side aggregates (count + volume) keyed by supplier.
         pour_rows = (
@@ -202,13 +203,14 @@ class AnalyticsService:
         date_to: date | None = None,
         grade_id: int | None = None,
         tower_id: int | None = None,
+        contractor_id: int | None = None,
     ) -> list[SupplierNcrCount]:
         """NCRs grouped by the RMC supplier of the failing pour, split by status
         (open vs closed) and severity (critical = triggering test was CRITICAL)."""
         pid = project.project_id
         conds = self._dim_conds(
             CubeTest.test_date, date_from=date_from, date_to=date_to,
-            grade_id=grade_id, tower_id=tower_id,
+            grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
         )
         rows = (
             await self.session.execute(
@@ -255,6 +257,7 @@ class AnalyticsService:
         date_to: date | None = None,
         grade_id: int | None = None,
         tower_id: int | None = None,
+        contractor_id: int | None = None,
     ) -> RunChart:
         """Chronological individual (final-age) results + IS-456 control lines.
         Control lines are populated only when a single grade is filtered."""
@@ -263,7 +266,7 @@ class AnalyticsService:
             self._final_test_cond(),
             *self._dim_conds(
                 CubeTest.test_date, date_from=date_from, date_to=date_to,
-                grade_id=grade_id, tower_id=tower_id,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
             ),
         ]
         rows = (
@@ -311,6 +314,7 @@ class AnalyticsService:
         date_to: date | None = None,
         grade_id: int | None = None,
         tower_id: int | None = None,
+        contractor_id: int | None = None,
     ) -> DistributionCurve:
         """Normal distribution (mean + σ recomputed on the filtered set)."""
         conds = [
@@ -318,7 +322,7 @@ class AnalyticsService:
             self._final_test_cond(),
             *self._dim_conds(
                 CubeTest.test_date, date_from=date_from, date_to=date_to,
-                grade_id=grade_id, tower_id=tower_id,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
             ),
         ]
         observed = [
@@ -641,10 +645,13 @@ class AnalyticsService:
         grade_id: int | None = None,
         supplier_id: int | None = None,
         tower_id: int | None = None,
+        contractor_id: int | None = None,
     ) -> list:
         """The dashboard dimension filters as WHERE clauses. ``date_col`` is the
         date column this metric is filtered on (a pour's pour_date, a test's
-        test_date); grade / supplier / tower always live on the pour."""
+        test_date); grade / supplier / tower always live on the pour. A
+        ``contractor_id`` filters to pours whose RMC supplier that contractor
+        hired (pour → supplier → contractor_org_id)."""
         conds: list = []
         if date_from is not None:
             conds.append(date_col >= date_from)
@@ -656,6 +663,14 @@ class AnalyticsService:
             conds.append(Pour.supplier_horizontal_id == supplier_id)
         if tower_id is not None:
             conds.append(Pour.tower_id == tower_id)
+        if contractor_id is not None:
+            conds.append(
+                Pour.supplier_horizontal_id.in_(
+                    select(Supplier.supplier_id).where(
+                        Supplier.contractor_org_id == contractor_id
+                    )
+                )
+            )
         return conds
 
     # ── Acceptance basis ─────────────────────────────────────────────────────

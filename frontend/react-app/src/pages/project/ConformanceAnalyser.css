@@ -1,0 +1,135 @@
+.qms-conf-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: var(--blue-light);
+  border: 1px solid var(--blue-mid);
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  color: var(--gray-700);
+}
+
+.qms-conf-banner svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--blue);
+}
+
+.qms-conf-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.qms-conf-tab {
+  padding: 8px 16px;
+  border: 1px solid var(--gray-200);
+  background: #fff;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.qms-conf-tab:hover {
+  border-color: var(--blue-mid);
+  color: var(--gray-900);
+}
+
+.qms-conf-tab.is-active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+
+/* Upload drop zone */
+.qms-conf-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  padding: 28px 16px;
+  border: 2px dashed var(--gray-300);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--gray-600);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.qms-conf-drop:hover {
+  border-color: var(--blue-mid);
+  background: var(--blue-light);
+}
+
+.qms-conf-drop svg {
+  color: var(--blue);
+}
+
+/* Photo grid */
+.qms-conf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.qms-conf-photo {
+  display: flex;
+  gap: 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: #fff;
+}
+
+.qms-conf-photo-thumb {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-400);
+}
+
+.qms-conf-photo-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.qms-conf-photo-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13.5px;
+}
+
+.qms-conf-photo-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.qms-conf-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  color: var(--blue);
+  cursor: pointer;
+}
+
+.qms-conf-link:hover {
+  text-decoration: underline;
+}

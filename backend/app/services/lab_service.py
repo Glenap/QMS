@@ -9,6 +9,7 @@ tokenised email link — the confirmation handshake.
 import logging
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -21,7 +22,7 @@ from app.core.exceptions import (
 )
 from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Project, TestingLab
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.lab_repo import LabRepository
@@ -30,6 +31,7 @@ from app.schemas.master import (
     LabConfirmationView,
     LabConfirmSubmit,
     LabCreate,
+    LabDirectoryItem,
     LabResponse,
 )
 
@@ -118,6 +120,39 @@ class LabService:
             order_by=TestingLab.created_at.desc(),
         )
         return [await self._to_response(lab) for lab in labs]
+
+    async def list_for_org(self, user: User) -> list[LabDirectoryItem]:
+        """Every testing lab visible to the caller's organisation, across
+        projects. A client org sees all labs on its projects (and which
+        contractor holds each); a contractor org sees the labs it holds."""
+        stmt = select(TestingLab, Project.project_name).join(
+            Project, Project.project_id == TestingLab.project_id, isouter=True
+        )
+        if user.role in (UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER):
+            stmt = stmt.where(Project.org_id == user.org_id)
+        else:
+            stmt = stmt.where(TestingLab.contractor_org_id == user.org_id)
+        rows = (
+            await self.session.execute(stmt.order_by(TestingLab.created_at.desc()))
+        ).all()
+        return [
+            LabDirectoryItem(
+                lab_id=lab.lab_id,
+                lab_name=lab.lab_name,
+                lab_type=lab.lab_type,
+                project_id=lab.project_id,
+                project_name=project_name,
+                contractor_org_id=lab.contractor_org_id,
+                contractor_org_name=await self._org_name(lab.contractor_org_id),
+                contact_email=lab.contact_email,
+                city=lab.city,
+                status=lab.status,
+                approval_status=lab.approval_status,
+                registered_by=lab.registered_by,
+                is_blocked=lab.is_blocked,
+            )
+            for lab, project_name in rows
+        ]
 
     async def resend_confirmation(
         self, project: Project, lab_id: int, user: User

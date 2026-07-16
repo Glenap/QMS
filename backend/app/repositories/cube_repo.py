@@ -7,7 +7,14 @@ sample/pour, so the project-scoped queries here join through that chain.
 
 from sqlalchemy import and_, select
 
-from app.models.quality import NCR, CorrectiveAction, CubeTest, NCRStatus, Penalty
+from app.models.quality import (
+    NCR,
+    CorrectiveAction,
+    CubeTest,
+    NcrRmcNotification,
+    NCRStatus,
+    Retest,
+)
 from app.models.transaction import CubeSample, Pour
 from app.repositories.base_repo import BaseRepository
 
@@ -128,15 +135,48 @@ class CorrectiveActionRepository(BaseRepository[CorrectiveAction]):
         )
 
 
-class PenaltyRepository(BaseRepository[Penalty]):
-    model = Penalty
+class RetestRepository(BaseRepository[Retest]):
+    model = Retest
 
-    async def list_for_ncr(self, ncr_id: int) -> list[Penalty]:
+    async def list_for_ncr(self, ncr_id: int) -> list[Retest]:
         return await self.list_by(
-            Penalty.ncr_id == ncr_id, order_by=Penalty.applied_at.asc()
+            Retest.ncr_id == ncr_id, order_by=Retest.created_at.asc()
         )
 
-    async def list_for_ncrs(self, ncr_ids: list[int]) -> list[Penalty]:
+    async def list_for_ncrs(self, ncr_ids: list[int]) -> list[Retest]:
         if not ncr_ids:
             return []
-        return await self.list_by(Penalty.ncr_id.in_(ncr_ids))
+        return await self.list_by(Retest.ncr_id.in_(ncr_ids))
+
+    async def list_for_project(self, project_id: int) -> list[Retest]:
+        """Every retest across the project's NCRs (newest first), for the
+        project-level Retests page."""
+        q = (
+            select(Retest)
+            .join(NCR, NCR.ncr_id == Retest.ncr_id)
+            .join(Pour, Pour.pour_id == NCR.pour_id)
+            .where(Pour.project_id == project_id)
+            .order_by(Retest.created_at.desc())
+        )
+        res = await self.session.execute(q)
+        return list(res.scalars().all())
+
+    async def get_in_ncr(self, retest_id: int, ncr_id: int) -> Retest | None:
+        return await self.get_by(
+            Retest.retest_id == retest_id, Retest.ncr_id == ncr_id
+        )
+
+
+class NcrRmcNotificationRepository(BaseRepository[NcrRmcNotification]):
+    model = NcrRmcNotification
+
+    async def list_for_ncr(self, ncr_id: int) -> list[NcrRmcNotification]:
+        return await self.list_by(
+            NcrRmcNotification.ncr_id == ncr_id,
+            order_by=NcrRmcNotification.sent_at.asc(),
+        )
+
+    async def list_for_ncrs(self, ncr_ids: list[int]) -> list[NcrRmcNotification]:
+        if not ncr_ids:
+            return []
+        return await self.list_by(NcrRmcNotification.ncr_id.in_(ncr_ids))

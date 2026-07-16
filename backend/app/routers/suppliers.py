@@ -13,8 +13,8 @@ from app.core.project_access import (
     ensure_can_block_entities,
     ensure_can_manage_client_side,
     ensure_can_manage_contractor_side,
-    ensure_project_role,
     require_project,
+    require_project_role,
 )
 from app.database.session import get_db
 from app.models.auth import ProjectRole, User
@@ -197,12 +197,11 @@ async def reject_supplier(
 async def notify_supplier(
     supplier_id: int,
     data: RmcNotify,
-    project: Project = Depends(require_project),
+    project: Project = Depends(
+        require_project_role(ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER)
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """QE/PM emails the RMC about a quality issue."""
-    await ensure_project_role(
-        db, current_user, project, ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER
-    )
     await SupplierService(db).notify_issue(project, supplier_id, data, current_user)

@@ -1,6 +1,8 @@
 .qms-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Auto-fit so the strip fills its width for any number of cells (4 or 6) —
+     no trailing blank tracks. */
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1px;
   background: var(--gray-200);
   border: 1px solid var(--gray-200);

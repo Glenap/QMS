@@ -24,19 +24,13 @@ export const ProjectCubeTests: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-page-header-block">
-        <div>
-          <h2 className="qms-section-heading-plain">Cube tests</h2>
-          <p className="qms-page-subtitle">
-            Cube samples cast from pours and their IS 456 strength results
-          </p>
-        </div>
-        {isQE && (
+      {isQE && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setShowCast((s) => !s)}>
             Cast sample
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load cube tests.')}</ErrorBox>}
 

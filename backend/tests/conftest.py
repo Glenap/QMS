@@ -197,6 +197,9 @@ async def client(connection, monkeypatch) -> AsyncClient:
         "app.services.supplier_service.send_rmc_issue_email", _no_email
     )
     monkeypatch.setattr(
+        "app.services.ncr_service.send_ncr_report_email", _no_email
+    )
+    monkeypatch.setattr(
         "app.services.membership_service.send_project_assignment_email", _no_email
     )
 

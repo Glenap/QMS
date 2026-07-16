@@ -30,16 +30,6 @@ export const NCRDashboard: React.FC = () => {
 
   return (
     <div className="qms-page">
-      <div className="qms-page-header">
-        <div>
-          <h1 className="qms-page-title">Non-Conformance Reports</h1>
-          <p className="qms-page-sub">
-            NCRs auto-raised when a cube test falls below its required strength (IS 456).
-            {isQE ? ' Review, log corrective actions and penalties, then close them out.' : ''}
-          </p>
-        </div>
-      </div>
-
       {error && <ErrorBox>{getApiErrorMessage(error, 'Unable to load NCRs.')}</ErrorBox>}
 
       <div className="qms-ncr-kpis">

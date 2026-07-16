@@ -12,8 +12,10 @@ import type {
   AISuggestionResponse,
   CorrectiveActionCreate,
   CorrectiveActionUpdate,
+  NcrNotifyRmc,
   NCRUpdate,
-  PenaltyCreate,
+  RetestCreate,
+  RetestResultUpdate,
 } from '../../types/master';
 
 // ── Query keys (one source of truth for cache reads + invalidation) ────────────
@@ -21,6 +23,8 @@ export const ncrKeys = {
   list: (pid: number) => ['ncrs', pid] as const,
   detail: (pid: number, ncrId: number) => ['ncr', pid, ncrId] as const,
   suggestion: (pid: number, ncrId: number) => ['ncr-suggestion', pid, ncrId] as const,
+  pattern: (pid: number, ncrId: number) => ['ncr-pattern', pid, ncrId] as const,
+  retests: (pid: number) => ['retests', pid] as const,
 };
 
 // ── Reads ──────────────────────────────────────────────────────────────────────
@@ -49,6 +53,20 @@ export const useNcrSuggestion = (pid: number, ncrId: number) =>
         throw err;
       }
     },
+  });
+
+// Deterministic recurring-failure insight for this NCR's RMC + grade.
+export const useNcrPattern = (pid: number, ncrId: number) =>
+  useQuery({
+    queryKey: ncrKeys.pattern(pid, ncrId),
+    queryFn: () => ncrsApi.pattern(pid, ncrId),
+  });
+
+// Every NDT/core retest across the project (the Retests page).
+export const useProjectRetests = (pid: number) =>
+  useQuery({
+    queryKey: ncrKeys.retests(pid),
+    queryFn: () => ncrsApi.listRetests(pid),
   });
 
 // ── Mutations ───────────────────────────────────────────────────────────────────
@@ -81,8 +99,38 @@ export const useUpdateCorrectiveAction = (pid: number, ncrId: number) =>
   useNcrMutation(pid, ncrId, (vars: { actionId: number; data: CorrectiveActionUpdate }) =>
     ncrsApi.updateCorrectiveAction(pid, ncrId, vars.actionId, vars.data));
 
-export const useAddPenalty = (pid: number, ncrId: number) =>
-  useNcrMutation(pid, ncrId, (data: PenaltyCreate) => ncrsApi.addPenalty(pid, ncrId, data));
+// Retest + RMC-notify mutations also refresh the project-wide Retests page and
+// the open detail panel (which lists retests / notifications inline).
+const useNcrRetestMutation = <TArgs, TResult>(
+  pid: number,
+  ncrId: number,
+  fn: (args: TArgs) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ncrKeys.detail(pid, ncrId) });
+      void qc.invalidateQueries({ queryKey: ncrKeys.list(pid) });
+      void qc.invalidateQueries({ queryKey: ncrKeys.retests(pid) });
+    },
+  });
+};
+
+export const useOrderRetest = (pid: number, ncrId: number) =>
+  useNcrRetestMutation(pid, ncrId, (data: RetestCreate) =>
+    ncrsApi.orderRetest(pid, ncrId, data));
+
+export const useRecordRetest = (pid: number, ncrId: number) =>
+  useNcrRetestMutation(
+    pid,
+    ncrId,
+    (vars: { retestId: number; data: RetestResultUpdate }) =>
+      ncrsApi.recordRetestResult(pid, ncrId, vars.retestId, vars.data),
+  );
+
+export const useNotifyRmc = (pid: number, ncrId: number) =>
+  useNcrMutation(pid, ncrId, (data: NcrNotifyRmc) => ncrsApi.notifyRmc(pid, ncrId, data));
 
 export const useGenerateSuggestion = (pid: number, ncrId: number) => {
   const qc = useQueryClient();

@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { ClipboardCheck, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -142,14 +142,6 @@ export const QEInbox: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-pw-header">
-        <h1 className="qms-pw-title">
-          <ClipboardCheck size={20} /> In-situ sign-off inbox
-        </h1>
-        <p className="text-muted">
-          Run the in-situ slump test on each admitted delivery, then accept or reject it.
-        </p>
-      </div>
 
       {error && <ErrorBox>{getApiErrorMessage(error, 'Unable to load the inbox.')}</ErrorBox>}
 

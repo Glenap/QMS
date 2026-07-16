@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.project_access import ensure_project_role, require_project
+from app.core.project_access import require_project, require_project_role
 from app.database.session import get_db
 from app.models.auth import ProjectRole, User
 from app.models.master import Project
@@ -47,12 +47,11 @@ async def list_approved_grades(
 async def review_mix_design(
     mix_design_id: int,
     data: MixDesignReview,
-    project: Project = Depends(require_project),
+    project: Project = Depends(require_project_role(ProjectRole.QUALITY_ENGINEER)),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """QE decision on a submitted mix design: APPROVE / REJECT(+reason) / IN_PROGRESS."""
-    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await MixDesignService(db).review(
         project, mix_design_id, data, current_user
     )

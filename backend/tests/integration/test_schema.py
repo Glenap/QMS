@@ -34,7 +34,8 @@ EXPECTED_TABLES = [
     # quality
     ("quality", "cube_tests"),
     ("quality", "ncrs"),
-    ("quality", "penalties"),
+    ("quality", "retests"),
+    ("quality", "ncr_rmc_notifications"),
     ("quality", "corrective_actions"),
     ("quality", "ai_suggestions"),
     ("quality", "alerts"),

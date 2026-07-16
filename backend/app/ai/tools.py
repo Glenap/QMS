@@ -121,7 +121,7 @@ TOOL_SPECS: list[dict] = [
             "name": "list_ncrs",
             "description": (
                 "List the project's NCRs (non-conformance reports) with status, grade, "
-                "location, strengths and corrective-action / penalty counts."
+                "location, strengths and corrective-action / retest counts."
             ),
             "parameters": {"type": "object", "properties": {}},
         },

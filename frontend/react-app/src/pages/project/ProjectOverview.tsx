@@ -7,10 +7,11 @@ import {
 import { Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
-import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { KpiStrip } from '../../components/analytics/KpiStrip';
+import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
+import { presetRange, type DatePreset } from '../../components/analytics/dateRange';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
@@ -74,16 +75,25 @@ export const ProjectOverview: React.FC = () => {
   // whole-project as the headline summary).
   const [towerId, setTowerId] = useState('ALL');
   const [gradeId, setGradeId] = useState('ALL');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [contractorId, setContractorId] = useState('ALL');
+  const [preset, setPreset] = useState<DatePreset>('7');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const filters = useMemo<QualityFilters>(() => {
     const f: QualityFilters = {};
     if (towerId !== 'ALL') f.tower_id = Number(towerId);
     if (gradeId !== 'ALL') f.grade_id = Number(gradeId);
-    if (dateFrom) f.date_from = dateFrom;
-    if (dateTo) f.date_to = dateTo;
+    if (contractorId !== 'ALL') f.contractor_id = Number(contractorId);
+    const range = presetRange(preset, customFrom, customTo);
+    if (range.date_from) f.date_from = range.date_from;
+    if (range.date_to) f.date_to = range.date_to;
     return f;
-  }, [towerId, gradeId, dateFrom, dateTo]);
+  }, [towerId, gradeId, contractorId, preset, customFrom, customTo]);
+
+  // Contractor filter options — accepted contractors only (client-side view).
+  const contractorOpts = contractors
+    .filter((c) => c.status === 'ACCEPTED')
+    .map((c) => ({ label: c.contractor_org_name, value: c.contractor_org_id }));
 
   const { data: towers = [] } = useProjectTowers(pid);
   const { data: grades = [] } = useGrades();
@@ -126,16 +136,13 @@ export const ProjectOverview: React.FC = () => {
     [ncrBySupplier],
   );
 
-  // The overall-data KPI strip (whole project). The Analytics page shows the
-  // same strip, but filtered by tower / grade / date.
+  // Whole-project headline KPIs — a simple, at-a-glance summary (not filtered).
+  // "Total Failures" = fail + critical results; "Open" = NCRs not yet closed.
   const failures = kpis ? kpis.fail_count + kpis.critical_count : null;
   const kpiItems = [
     { label: 'Total Pours', value: fmtNum(kpis?.pour_count) },
     { label: 'Overall Pass Rate', value: fmtPct(kpis?.pass_rate_pct), color: 'var(--green)' },
-    { label: 'Avg. Strength', value: kpis?.avg_strength_mpa != null ? `${kpis.avg_strength_mpa} MPa` : '—' },
     { label: 'Total Failures', value: failures != null ? String(failures) : '—', color: 'var(--red)' },
-    { label: 'Critical Failures', value: kpis ? String(kpis.critical_count) : '—', color: 'var(--amber)' },
-    // "Open" = not yet closed (open + under review), matching the Analytics strip.
     { label: 'Open NCRs', value: kpis ? String(kpis.ncr_open + kpis.ncr_under_review) : '—' },
   ];
 
@@ -201,8 +208,12 @@ export const ProjectOverview: React.FC = () => {
           options={[{ label: 'All towers', value: 'ALL' }, ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id }))]} />
         <Select label="Grade" fullWidth={false} value={gradeId} onChange={(e) => setGradeId(e.target.value)}
           options={[{ label: 'All grades', value: 'ALL' }, ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id }))]} />
-        <Input label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} fullWidth={false} />
-        <Input label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} fullWidth={false} />
+        {contractorOpts.length > 0 && (
+          <Select label="Contractor" fullWidth={false} value={contractorId} onChange={(e) => setContractorId(e.target.value)}
+            options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
+        )}
+        <DateRangeFilter preset={preset} from={customFrom} to={customTo}
+          onPreset={setPreset} onFrom={setCustomFrom} onTo={setCustomTo} />
       </div>
 
       <div className="qms-dashboard-charts">

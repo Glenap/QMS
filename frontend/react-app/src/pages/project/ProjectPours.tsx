@@ -24,15 +24,6 @@ export const ProjectPours: React.FC = () => {
 
   return (
     <div>
-      <div className="qms-page-header-block">
-        <div>
-          <h2 className="qms-section-heading-plain">Pour cards</h2>
-          <p className="qms-page-subtitle">
-            Concrete pours recorded from accepted deliveries. Record a pour from the Dispatches page.
-          </p>
-        </div>
-      </div>
-
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load pours.')}</ErrorBox>}
 
       <Card className="qms-form-section" padding="none">
