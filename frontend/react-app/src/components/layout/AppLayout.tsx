@@ -1,8 +1,15 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { ConfirmProvider } from '../ui/ConfirmDialog';
+
+// Page fallback shown while a lazy route chunk loads. Kept INSIDE the shell so
+// the sidebar/topbar stay mounted (navigating a lazy page must not remount the
+// whole app — that caused a layout flash/gap that only cleared on reload).
+const ContentFallback = () => (
+  <div style={{ padding: 24, color: 'var(--gray-500)', fontSize: 14 }}>Loading…</div>
+);
 
 const SEGMENT_TITLES: Record<string, string> = {
   projects: 'Projects',
@@ -43,7 +50,9 @@ export const AppLayout: React.FC = () => {
         <div className="main-content">
           <Topbar title={title} />
           <main className="content-area animate-in">
-            <Outlet />
+            <Suspense fallback={<ContentFallback />}>
+              <Outlet />
+            </Suspense>
           </main>
         </div>
       </div>

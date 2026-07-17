@@ -36,3 +36,7 @@ export const useReviewDocument = (pid: number) => {
 // Side-effecting browser download (no cache) — a mutation gives per-row pending.
 export const useDownloadDocument = (pid: number) =>
   useMutation({ mutationFn: (doc: DocumentResponse) => documentsApi.download(pid, doc) });
+
+// NOTE: opening a document inline (documentsApi.view) is called DIRECTLY from a
+// click handler, not via a mutation — window.open must run in the user gesture
+// to dodge the popup blocker.

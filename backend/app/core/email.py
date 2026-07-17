@@ -9,8 +9,10 @@ Senders: invitation, OTP, supplier/lab confirmation, mix-design request, truck
 dispatch, truck result, lab-report request, lab reminder.
 """
 
+import asyncio
 import base64
 import io
+import logging
 from pathlib import Path
 
 import httpx
@@ -19,6 +21,8 @@ from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 # An optional email attachment as (filename, raw bytes).
 Attachment = tuple[str, bytes]
@@ -89,9 +93,10 @@ async def _send_via_brevo(
         resp.raise_for_status()
 
 
-async def _send(message: MessageSchema, attachment: Attachment | None = None) -> None:
-    """Deliver via the configured provider. Callers keep building MessageSchema;
-    an optional ``attachment`` (filename, bytes) is carried by both transports."""
+async def _deliver(message: MessageSchema, attachment: Attachment | None = None) -> None:
+    """Actually deliver via the configured provider. Callers keep building
+    MessageSchema; an optional ``attachment`` (filename, bytes) is carried by both
+    transports."""
     if settings.MAIL_PROVIDER == "brevo":
         await _send_via_brevo(message, attachment)
     else:
@@ -101,6 +106,35 @@ async def _send(message: MessageSchema, attachment: Attachment | None = None) ->
                 UploadFile(io.BytesIO(content), filename=filename, size=len(content))
             ]
         await fastmail.send_message(message)
+
+
+# In-flight background sends are kept referenced so the event loop can't GC them
+# mid-delivery; a failure is logged, never surfaced (email is best-effort).
+_pending_sends: set[asyncio.Task] = set()
+
+
+def _finalize_send(task: asyncio.Task) -> None:
+    _pending_sends.discard(task)
+    if not task.cancelled() and (exc := task.exception()) is not None:
+        logger.warning("Background email delivery failed: %s", exc)
+
+
+async def _send(message: MessageSchema, attachment: Attachment | None = None) -> None:
+    """Schedule delivery in the BACKGROUND so no request or flow ever blocks on
+    the SMTP / HTTP round-trip — email is best-effort throughout the app, and the
+    ~1-2s (or slow/failing) send should never hold up the response. Returns as
+    soon as the send is queued; the delivery, and any failure, happen/​log later.
+
+    Falls back to inline delivery only if there is somehow no running event loop.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        await _deliver(message, attachment)
+        return
+    task = loop.create_task(_deliver(message, attachment))
+    _pending_sends.add(task)
+    task.add_done_callback(_finalize_send)
 
 
 # ---------------------------------------------------------------------------

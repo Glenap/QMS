@@ -3,7 +3,7 @@
 // via the router Outlet context. The nav itself lives in the (project-aware)
 // Sidebar.
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Link, Outlet, useMatch, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { Badge } from '../ui/Badge';
@@ -78,7 +78,9 @@ export const ProjectLayout: React.FC = () => {
           </Badge>
         </div>
 
-        <Outlet context={{ project, reload: () => { void refetch(); } } satisfies ProjectCtx} />
+        <Suspense fallback={<p className="text-muted" style={{ padding: '8px 0' }}>Loading…</p>}>
+          <Outlet context={{ project, reload: () => { void refetch(); } } satisfies ProjectCtx} />
+        </Suspense>
       </div>
       {!onChatbotPage && <ChatWidget project={project} />}
     </div>

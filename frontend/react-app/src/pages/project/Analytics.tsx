@@ -54,7 +54,12 @@ export const Analytics: React.FC = () => {
   });
 
   const gradeOpts = grades.map((g) => ({ label: g.grade_name, value: g.grade_id }));
-  const towerOpts = towers.map((t) => ({ label: t.tower_name, value: t.tower_id }));
+  const towerOpts = [
+    { label: 'All towers', value: 'ALL' },
+    ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id })),
+  ];
+  // 'ALL' → no tower filter (whole project); a concrete id → that tower.
+  const tid = (v: string): number | undefined => (v === 'ALL' ? undefined : n(v));
   const contractorOpts = contractors
     .filter((c) => c.status === 'ACCEPTED')
     .map((c) => ({ label: c.contractor_org_name, value: c.contractor_org_id }));
@@ -84,16 +89,16 @@ export const Analytics: React.FC = () => {
   const runRange = presetRange(rPreset, rFrom, rTo);
 
   const { data: run } = useRunChart(pid, {
-    grade_id: n(runGrade), tower_id: n(runTower),
+    grade_id: n(runGrade), tower_id: tid(runTower),
     contractor_id: rC !== 'ALL' ? Number(rC) : undefined,
     date_from: runRange.date_from, date_to: runRange.date_to,
   });
   const { data: dist } = useDistribution(pid, {
-    grade_id: n(distGrade), tower_id: n(distTower),
+    grade_id: n(distGrade), tower_id: tid(distTower),
     contractor_id: dC !== 'ALL' ? Number(dC) : undefined,
   });
   const { data: cusum } = useCusum(pid, {
-    grade_id: n(cusumGrade), tower_id: n(cusumTower),
+    grade_id: n(cusumGrade), tower_id: tid(cusumTower),
     contractor_id: uC !== 'ALL' ? Number(uC) : undefined,
   });
 

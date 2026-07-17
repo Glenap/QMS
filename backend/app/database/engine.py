@@ -1,4 +1,5 @@
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -17,9 +18,17 @@ def normalize_database_url(raw: str) -> tuple[str, dict]:
       dialect). A URL that already names a driver is left untouched.
     - **libpq-only query params** — asyncpg doesn't understand ``sslmode`` /
       ``channel_binding``; we drop them and, when SSL was requested, pass
-      ``ssl=True`` via connect_args instead. ``statement_cache_size=0`` is set
-      alongside so the same URL also works through a PgBouncer transaction pooler
-      (asyncpg's prepared-statement cache otherwise errors there).
+      ``ssl=True`` via connect_args instead. The **PgBouncer/pooler-safe**
+      settings are set alongside so the same URL also works through a transaction
+      pooler (e.g. Neon's ``-pooler`` endpoint):
+
+        * ``statement_cache_size=0`` — disables **asyncpg's** own prepared-
+          statement cache;
+        * ``prepared_statement_cache_size=0`` — disables **SQLAlchemy's** asyncpg
+          dialect prepared-statement cache (the one that raised
+          ``InvalidCachedStatementError`` after a schema change through PgBouncer);
+        * ``prepared_statement_name_func`` — unique statement names so a pooler
+          reusing a server connection never collides on a stale name.
 
     Returns the rewritten URL and the connect_args dict for create_async_engine.
     """
@@ -34,7 +43,12 @@ def normalize_database_url(raw: str) -> tuple[str, dict]:
     query.pop("channel_binding", None)  # asyncpg negotiates this itself
     if sslmode and sslmode not in ("disable", "allow", "prefer"):
         connect_args["ssl"] = True
-        connect_args["statement_cache_size"] = 0  # PgBouncer/pooler-safe
+        # Fully pooler-safe: neither driver caches prepared plans, and every
+        # statement gets a unique name (PgBouncer transaction pooling reuses
+        # server connections, which breaks fixed-name / cached prepared plans).
+        connect_args["statement_cache_size"] = 0
+        connect_args["prepared_statement_cache_size"] = 0
+        connect_args["prepared_statement_name_func"] = lambda: f"__asyncpg_{uuid4()}__"
 
     url = urlunsplit((scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
     return url, connect_args

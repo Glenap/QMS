@@ -61,6 +61,7 @@ export interface MixDesignResponse {
   rejection_reason: string | null;
   observed_28day_strength_mpa: number | null;
   approval_date: string | null;
+  document_id: number | null; // the RMC's uploaded mix-design PDF, if any
   created_at: string;
 }
 

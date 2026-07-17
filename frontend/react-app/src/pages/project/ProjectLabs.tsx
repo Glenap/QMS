@@ -86,6 +86,7 @@ export const ProjectLabs: React.FC = () => {
   };
 
   const [showForm, setShowForm] = useState(false);
+  const [tab, setTab] = useState<'THIRD_PARTY' | 'IN_HOUSE'>('THIRD_PARTY');
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: EMPTY,
@@ -175,34 +176,37 @@ export const ProjectLabs: React.FC = () => {
     </tr>
   );
 
-  const labSection = (title: string, hint: string, sectionRows: LabResponse[], action?: React.ReactNode) => (
-    <Card className="qms-form-section" padding="none">
-      <div className="qms-card-header">
-        <div>
-          <h3 className="qms-section-heading-plain">{title}</h3>
-          <p className="qms-text-sm text-muted" style={{ margin: '2px 0 0' }}>{hint}</p>
-        </div>
-        {action}
-      </div>
-      <div className="qms-table-container">
-        <table className="qms-table">
-          <thead><tr><th>Lab</th><th>Hired by</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>
-          <tbody>
-            {isPending ? (
-              <tr><td colSpan={5} className="text-muted">Loading…</td></tr>
-            ) : sectionRows.length === 0 ? (
-              <tr><td colSpan={5} className="text-muted">No {title.toLowerCase()} yet.</td></tr>
-            ) : (
-              sectionRows.map(labRow)
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  );
-
   const thirdParty = rows.filter((l) => l.lab_type === 'THIRD_PARTY');
   const inHouse = rows.filter((l) => l.lab_type === 'IN_HOUSE');
+  const active = tab === 'THIRD_PARTY' ? thirdParty : inHouse;
+
+  // Horizontal tab switcher (better than stacked sections when there are many
+  // labs) — Third-party / In-house.
+  const tabBtn = (key: 'THIRD_PARTY' | 'IN_HOUSE', label: string, count: number) => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={tab === key}
+      onClick={() => setTab(key)}
+      style={{
+        padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
+        borderBottom: tab === key ? '2px solid var(--blue)' : '2px solid transparent',
+        color: tab === key ? 'var(--blue)' : 'var(--gray-600)',
+        fontWeight: 600, fontSize: 14, marginBottom: -1,
+      }}
+    >
+      {label}
+      <span
+        style={{
+          marginLeft: 6, padding: '1px 7px', borderRadius: 99, fontSize: 12,
+          background: tab === key ? 'var(--blue-light)' : 'var(--gray-100)',
+          color: tab === key ? 'var(--blue)' : 'var(--gray-500)',
+        }}
+      >
+        {count}
+      </span>
+    </button>
+  );
 
   return (
     <div>
@@ -234,22 +238,38 @@ export const ProjectLabs: React.FC = () => {
         </Card>
       )}
 
-      {labSection(
-        'Third-party labs',
-        'External / independent testing laboratories.',
-        thirdParty,
-        canRegister && !showForm ? (
-          <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
-            Register lab
-          </Button>
-        ) : undefined,
-      )}
-
-      {labSection(
-        'In-house labs',
-        'The contractor’s own on-site testing laboratories.',
-        inHouse,
-      )}
+      <Card className="qms-form-section" padding="none">
+        <div className="qms-card-header">
+          <div role="tablist" style={{ display: 'flex', gap: 4 }}>
+            {tabBtn('THIRD_PARTY', 'Third-party', thirdParty.length)}
+            {tabBtn('IN_HOUSE', 'In-house', inHouse.length)}
+          </div>
+          {canRegister && !showForm && (
+            <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
+              Register lab
+            </Button>
+          )}
+        </div>
+        <p className="qms-text-sm text-muted" style={{ margin: '0 16px 4px' }}>
+          {tab === 'THIRD_PARTY'
+            ? 'External / independent testing laboratories.'
+            : 'The contractor’s own on-site testing laboratories.'}
+        </p>
+        <div className="qms-table-container">
+          <table className="qms-table">
+            <thead><tr><th>Lab</th><th>Hired by</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>
+            <tbody>
+              {isPending ? (
+                <tr><td colSpan={5} className="text-muted">Loading…</td></tr>
+              ) : active.length === 0 ? (
+                <tr><td colSpan={5} className="text-muted">No {tab === 'THIRD_PARTY' ? 'third-party' : 'in-house'} labs yet.</td></tr>
+              ) : (
+                active.map(labRow)
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 };

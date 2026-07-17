@@ -33,7 +33,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  padding: 0 40px;
+  padding: 0 24px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--lp-border);
@@ -45,12 +45,12 @@
 }
 
 .lp-nav-inner {
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
   height: 64px;
   display: flex;
   align-items: center;
-  gap: 48px;
+  gap: 40px;
 }
 
 .lp-logo {
@@ -99,11 +99,14 @@
   color: var(--lp-slate);
   text-decoration: none;
   font-weight: 600;
-  transition: color 0.2s;
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
 }
 
 .lp-nav-links a:hover {
   color: var(--lp-blue);
+  background: var(--lp-bg);
 }
 
 .lp-nav-cta {
@@ -1262,7 +1265,8 @@
   border-color: #CBD5E1;
 }
 
-.lp-role-tab-btn--active {
+.lp-role-tab-btn--active,
+.lp-role-tab-btn--active:hover {
   background: var(--lp-navy);
   color: #fff;
   border-color: var(--lp-navy);

@@ -137,6 +137,37 @@ def _dates(i: int) -> tuple[str, str]:
     return cast.isoformat(), test.isoformat()
 
 
+def _mix_payload(grade: dict) -> dict:
+    """A realistic, fully-filled mix-design submission for a grade, so the mix
+    detail view shows rich RMC data (not just a w/c ratio) alongside the PDF."""
+    fck = float(grade["min_strength_mpa"])
+    binder = round(320 + (fck - 25) * 6)
+    wc = round(0.50 - (fck - 25) * 0.004, 3)
+    return {
+        "grade_id": grade["grade_id"],
+        "mix_design_ref": f"MD-{grade['grade_name']}-01",
+        "mix_type": "Design Mix",
+        "exposure_condition": "Severe" if fck >= 35 else "Moderate",
+        "cement_type": "OPC_53",
+        "cement_kg": round(binder * 0.85),
+        "flyash_kg": round(binder * 0.15),
+        "ggbs_kg": 0,
+        "total_binder_kg": binder,
+        "wc_ratio": wc,
+        "free_water_l": round(binder * wc),
+        "water_kg": round(binder * wc),
+        "coarse_20mm_kg": 700,
+        "coarse_10mm_kg": 480,
+        "fine_agg_kg": 780,
+        "admixture_brand": "MasterGlenium 8233",
+        "admixture_pct": 0.8,
+        "target_mean_strength_mpa": round(fck + 8.25, 1),
+        "max_aggregate_size_mm": 20,
+        "slump_range_mm": "100-125",
+        "trial_mix_date": (TODAY - timedelta(days=40)).isoformat(),
+    }
+
+
 def _bearer(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
@@ -424,9 +455,10 @@ async def _wipe_all() -> None:
         await s.commit()
 
 
-async def _setup_contractor(c, tower, *, admin_tok, qe_tok, pid, grade_ids, n_suppliers, lab_specs):
+async def _setup_contractor(c, tower, *, admin_tok, qe_tok, pid, grades, n_suppliers, lab_specs):
     """Register a contractor's suppliers + labs and get an APPROVED mix design for
     every used grade on every supplier. Returns (suppliers, labs, floors)."""
+    grade_ids = [g["grade_id"] for g in grades]
     # Suppliers (contractor side).
     suppliers = []
     for name in n_suppliers:
@@ -482,11 +514,11 @@ async def _setup_contractor(c, tower, *, admin_tok, qe_tok, pid, grade_ids, n_su
             "suppliers",
         ).json()
         token = next(s["mix_submission_token"] for s in sups if s["supplier_id"] == sup["supplier_id"])
-        for gid in grade_ids:
+        for grade in grades:
             submitted = _ok(
                 await c.post(
                     f"{API}/external/mix-design?token={token}",
-                    data={"payload": json.dumps({"grade_id": gid, "wc_ratio": 0.45})},
+                    data={"payload": json.dumps(_mix_payload(grade))},
                     files={"file": ("mix-design.pdf", b"%PDF-1.4 demo mix", "application/pdf")},
                 ),
                 "submit mix design",
@@ -535,7 +567,6 @@ async def seed() -> None:
         grades = _ok(await c.get(f"{API}/grades", headers=_bearer(first_admin_tok)), "grades").json()
         grade_by = {g["grade_name"]: g for g in grades}
         used_grades = [grade_by[n] for n in GRADES_USED if n in grade_by] or grades[:4]
-        grade_ids = [g["grade_id"] for g in used_grades]
 
         # Set up each contractor: tokens, suppliers, labs, floors, approved mixes.
         print("Setting up 3 contractors, 10 suppliers, 5 labs, mix designs…")
@@ -551,7 +582,7 @@ async def seed() -> None:
             lab_offset += LABS_PER[i]
             suppliers, labs, floors = await _setup_contractor(
                 c, towers[i], admin_tok=admin_tok, qe_tok=qe_tok, pid=pid,
-                grade_ids=grade_ids, n_suppliers=names, lab_specs=specs,
+                grades=used_grades, n_suppliers=names, lab_specs=specs,
             )
             ctxs.append({
                 "tower": towers[i], "qe_tok": qe_tok, "sup_tok": sup_tok,

@@ -45,6 +45,37 @@ export const documentsApi = {
     URL.revokeObjectURL(url);
   },
 
+  // Open a document inline in a new browser tab (PDFs render in the built-in
+  // viewer). The download needs the bearer token, so we can't just link to the
+  // URL — we fetch the blob. To avoid the popup blocker (which blocks a
+  // window.open that happens after an await), the tab is opened SYNCHRONOUSLY in
+  // the caller's click, then pointed at the blob once it loads. Call this
+  // directly from the event handler, not via an async wrapper.
+  view(projectId: number, documentId: number): Promise<void> {
+    const tab = window.open('about:blank', '_blank');
+    return api
+      .get(`/projects/${projectId}/documents/${documentId}/download`, { responseType: 'blob' })
+      .then((res) => {
+        const blob = new Blob([res.data as BlobPart], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        if (tab) {
+          tab.location.href = url;
+        } else {
+          // Popup blocked — fall back to a download.
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.click();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      })
+      .catch((err) => {
+        if (tab) tab.close();
+        throw err;
+      });
+  },
+
   remove(projectId: number, documentId: number): Promise<void> {
     return api
       .delete(`/projects/${projectId}/documents/${documentId}`)
