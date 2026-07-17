@@ -1,0 +1,157 @@
+# mix_design_cert.yaml
+# Field extraction template for Mix Design Certificates
+# Patterns are Python regex strings (re module).  All patterns are case-insensitive.
+
+doc_type: MIX_DESIGN_CERT
+
+required_fields:
+  - mix_design_ref
+  - cement_kg
+  - wc_ratio
+  - target_mean_strength_mpa
+
+fields:
+  mix_design_ref:
+    label: "Mix Design ID / Ref"
+    type: string
+    required: true
+    patterns:
+      - 'mix\s+design\s+(?:ref|no|id)[.:\s]+([A-Z0-9\-\/]+)'
+      - 'mix\s+ref(?:erence)?\s+(?:no)?[.:\s]+([A-Z0-9\-\/]+)'
+
+  mix_type:
+    label: "Mix Type"
+    type: string
+    required: false
+    allowed_values: ["Design Mix", "Nominal Mix"]
+    patterns:
+      - 'mix\s+type[.:\s]+([a-zA-Z\s]+mix)'
+      - 'type\s+of\s+mix[.:\s]+([a-zA-Z\s]+mix)'
+
+  exposure_condition:
+    label: "Exposure Condition"
+    type: string
+    required: false
+    patterns:
+      - 'exposure\s+condition[.:\s]+([a-zA-Z]+)'
+
+  cement_type:
+    label: "Cement Type"
+    type: string
+    required: false
+    allowed_values: ["OPC_43", "OPC_53"]
+    patterns:
+      - 'type\s+of\s+cement.*?OPC[\s\-]*(\d+)'
+      - 'cement\s+type.*?OPC[\s\-]*(\d+)'
+      - 'cement.*?OPC[\s\-]*(\d+)'
+
+  max_aggregate_size_mm:
+    label: "Max Aggregate Size (mm)"
+    type: int
+    required: false
+    patterns:
+      - 'max(?:imum)?\s+nominal\s+size\s+of\s+aggregate.*?(\d+)'
+      - 'max(?:imum)?\s+size\s+of\s+aggregate.*?(\d+)'
+      - 'aggregate\s+size.*?(\d+)'
+
+  slump_range_mm:
+    label: "Slump Range (mm)"
+    type: string
+    required: false
+    patterns:
+      - 'slump.*?(\d+\s*[-–]\s*\d+)'
+      - 'workability.*?(\d+\s*[-–]\s*\d+)\s*mm'
+
+  admixture_brand:
+    label: "Admixture Brand"
+    type: string
+    required: false
+    patterns:
+      - 'brand\s+of\s+admixture[.:\s]+([A-Za-z0-9\s]+)(?:\n|$)'
+      - 'admixture[.:\s]+([A-Za-z0-9\s]+)(?:\n|$)'
+
+  cement_kg:
+    label: "Cement kg/m³"
+    type: float
+    required: true
+    patterns:
+      - 'cement(?:[.:\s]+|(?:\s+content)[.:\s]+)([\d.]+)\s*(?:kg|kg/m3|kg/m³|kg/m\S*)'
+
+  flyash_kg:
+    label: "Fly ash kg/m³"
+    type: float
+    required: false
+    patterns:
+      - 'fly[\s\-]*ash(?:[.:\s]+|(?:\s+content)[.:\s]+)([\d.]+)\s*(?:kg|kg/m3|kg/m³|kg/m\S*)'
+
+  ggbs_kg:
+    label: "GGBS kg/m³"
+    type: float
+    required: false
+    patterns:
+      - 'ggbs(?:[.:\s]+|(?:\s+content)[.:\s]+)([\d.]+)\s*(?:kg|kg/m3|kg/m³|kg/m\S*)'
+
+  total_binder_kg:
+    label: "Total binder kg/m³"
+    type: float
+    required: false
+    patterns:
+      - 'total\s+binder.*?([\d.]+)\s*(?:kg|kg/m3|kg/m³|kg/m\S*)'
+      - 'binder\s+content.*?([\d.]+)\s*(?:kg|kg/m3|kg/m³|kg/m\S*)'
+
+  wc_ratio:
+    label: "w/c ratio"
+    type: float
+    required: true
+    patterns:
+      - 'w/c\s+ratio[.:\s]+([\d.]+)'
+      - 'water[\s\-]*cement\s+ratio[.:\s]+([\d.]+)'
+
+  free_water_l:
+    label: "Free water lit/m³"
+    type: float
+    required: false
+    patterns:
+      - 'free\s+water.*?([\d.]+)'
+      - 'water\s+content.*?([\d.]+)'
+      - 'water.*?([\d.]+)\s*(?:l|lit|liters|litres|kg)'
+
+  coarse_20mm_kg:
+    label: "Coarse agg 20mm kg"
+    type: float
+    required: false
+    patterns:
+      - '20\s*mm\s+aggregate[.:\s]+([\d.]+)'
+      - 'coarse\s+aggregate[\s\(]*20\s*mm[\)\s:]*([\d.]+)'
+
+  coarse_10mm_kg:
+    label: "Coarse agg 10mm kg"
+    type: float
+    required: false
+    patterns:
+      - '10\s*mm\s+aggregate[.:\s]+([\d.]+)'
+      - 'coarse\s+aggregate[\s\(]*10\s*mm[\)\s:]*([\d.]+)'
+
+  fine_agg_kg:
+    label: "Fine aggregate kg"
+    type: float
+    required: false
+    patterns:
+      - 'fine\s+aggregate[.:\s]+([\d.]+)'
+      - 'sand[.:\s]+([\d.]+)'
+
+  admixture_pct:
+    label: "Admixture dosage %"
+    type: float
+    required: false
+    patterns:
+      - 'admixture\s+dosage\s*%?[.:\s]+([\d.]+)\s*%'
+      - 'chemical\s+admixture[.:\s]+([\d.]+)\s*%'
+
+  target_mean_strength_mpa:
+    label: "Target mean strength MPa"
+    type: float
+    required: true
+    patterns:
+      - 'target\s+mean\s+strength[.:\s]+([\d.]+)'
+      - 'target\s+strength[.:\s]+([\d.]+)'

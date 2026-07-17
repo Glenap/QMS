@@ -30,3 +30,36 @@ async def submit_truck_fill(
     db: AsyncSession = Depends(get_db),
 ):
     return await DispatchService(db).submit_fill(token, data)
+
+
+from fastapi import BackgroundTasks, UploadFile, File
+from app.services.ocr_service import OcrService
+from app.schemas.ocr import OcrJobResponse
+
+@router.post("/dispatch/ocr", response_model=dict, status_code=202)
+async def create_dispatch_ocr_job(
+    token: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    view = await DispatchService(db).get_fill_view(token)
+    
+    pdf_bytes = await file.read()
+    service = OcrService(db)
+    job_id = await service.create_anonymous_job(view.project_id)
+    
+    background_tasks.add_task(service.process_job_in_background, job_id, pdf_bytes)
+    
+    return {"job_id": job_id}
+
+
+@router.get("/dispatch/ocr/{job_id}", response_model=OcrJobResponse)
+async def get_dispatch_ocr_job(
+    token: str,
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    view = await DispatchService(db).get_fill_view(token)
+    service = OcrService(db)
+    return await service.get_job(job_id, view.project_id)

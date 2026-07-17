@@ -1,0 +1,118 @@
+# cube_test_report.yaml
+# Field extraction template for IS-516 Cube Compressive Strength Test Reports.
+# Patterns are Python regex strings (re module).  All patterns are case-insensitive.
+
+doc_type: CUBE_TEST_REPORT
+
+# Weighted required fields for confidence scoring
+required_fields:
+  - test_date
+  - grade
+  - observed_strength_mpa
+
+fields:
+  test_date:
+    label: "Date of Test"
+    type: date
+    required: true
+    patterns:
+      - 'date\s+of\s+test[ing]?[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})'
+      - 'test(?:ing)?\s+date[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})'
+      - 'date[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})'
+
+  casting_date:
+    label: "Date of Casting"
+    type: date
+    required: false
+    patterns:
+      - 'date\s+of\s+cast(?:ing)?[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})'
+      - 'cast(?:ing)?\s+date[:\s]+(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})'
+
+  test_age_days:
+    label: "Age at Test (days)"
+    type: int
+    required: false
+    allowed_values: [1, 3, 7, 14, 28, 56, 90]
+    patterns:
+      - 'age\s+(?:of|at)\s+test(?:ing)?[:\s]+(\d+)\s*days?'
+      - '(\d+)\s*[-–]\s*days?\s+strength'
+      - '\b(7|28)\s*day\b'
+
+  grade:
+    label: "Grade of Concrete"
+    type: string
+    required: true
+    normalize: uppercase_strip_space
+    patterns:
+      - 'grade\s+of\s+concrete[:\s]+(M\s*\d+)'
+      - 'grade[:\s]+(M\s*\d+)'
+      - '\b(M\s*(?:10|15|20|25|30|35|40|45|50|55|60|65|70))\b'
+
+  sample_ref:
+    label: "Sample / Specimen Reference"
+    type: string
+    required: false
+    patterns:
+      - 'sample\s+(?:ref|no|id)[.:\s]+([A-Z0-9\-\/]+)'
+      - 'specimen\s+(?:no|id)[.:\s]+([A-Z0-9\-\/]+)'
+      - 'cube\s+(?:no|id)[.:\s]+([A-Z0-9\-\/]+)'
+
+  observed_strength_mpa:
+    label: "Compressive Strength (MPa)"
+    type: float
+    required: true
+    # Transform: if value is in kN (load), divide by face area (150mm × 150mm = 22500 mm²)
+    # and convert to MPa.  Pipeline applies transform when unit hint is "kN".
+    patterns:
+      - 'compressive\s+strength[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa|mpa)'
+      - 'observed\s+strength[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa)'
+      - 'average\s+strength[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa)'
+      - 'strength\s+at\s+\d+\s*days?[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa)'
+    # kN load patterns — will be converted: MPa = kN * 1000 / 22500
+    load_kn_patterns:
+      - 'load\s+at\s+failure[^:=]*[:\s]+([\d.]+)\s*kN'
+      - 'failure\s+load[^:=]*[:\s]+([\d.]+)\s*kN'
+
+  required_strength_mpa:
+    label: "Required Strength (MPa)"
+    type: float
+    required: false
+    patterns:
+      - 'required\s+strength[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa)'
+      - 'characteristic\s+strength[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa)'
+      - 'target\s+(?:mean\s+)?strength[^:=]*[:\s]+([\d.]+)\s*(?:N/mm[²2]|MPa)'
+
+  lab_name:
+    label: "Laboratory Name"
+    type: string
+    required: false
+    patterns:
+      - 'lab(?:oratory)?(?:\s+name)?[:\s]+([A-Za-z][A-Za-z0-9\s,.\-]+?)(?:\n|Ltd|Pvt)'
+      - 'tested\s+by[:\s]+([A-Za-z][A-Za-z0-9\s,.\-]+?)(?:\n|Ltd|Pvt)'
+
+  nabl_no:
+    label: "NABL Accreditation Number"
+    type: string
+    required: false
+    patterns:
+      - 'NABL[^:]*[:\s]+([A-Z0-9\-\/]+)'
+      - 'accreditation\s+(?:no|number)[:\s]+([A-Z0-9\-\/]+)'
+
+# Table parsing config — for cube test reports that list multiple cubes in a table
+table_extraction:
+  # Column header keywords that identify the strength column
+  strength_col_hints:
+    - "compressive strength"
+    - "strength"
+    - "mpa"
+    - "n/mm"
+  # Column header keywords that identify the sample ID column
+  sample_col_hints:
+    - "sample"
+    - "specimen"
+    - "cube no"
+    - "id"
+  # Column header keywords that identify the age column
+  age_col_hints:
+    - "age"
+    - "days"

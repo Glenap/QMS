@@ -12,6 +12,7 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { OcrUploadZone } from '../components/ocr/OcrUploadZone';
 import { mixSubmissionApi } from '../api/mixSubmission';
 import { getApiErrorMessage } from '../api/client';
 import { num } from '../lib/coerce';
@@ -185,15 +186,54 @@ export const MixDesignSubmit: React.FC = () => {
                   <Input label="Slump range mm" placeholder="e.g. 100-150" value={text.slump_range_mm ?? ''} onChange={(e) => set('slump_range_mm', e.target.value)} />
                 </div>
 
-                <label className="qms-input-label" style={{ display: 'block', marginTop: 8 }}>
-                  Mix design PDF (required)
-                  <input
-                    type="file"
-                    accept="application/pdf,image/*"
-                    style={{ display: 'block', marginTop: 4 }}
-                    onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                <div style={{ marginTop: 12 }}>
+                  <OcrUploadZone 
+                    hooks={{
+                      createJob: (f) => mixSubmissionApi.createOcrJob(token, f as File),
+                      getJob: (id) => mixSubmissionApi.getOcrJob(token, id),
+                    }}
+                    onSuccess={(data, f) => {
+                      // Apply extracted mix details
+                      const map: Record<string, keyof typeof data> = {
+                        mix_design_ref: 'mix_design_ref',
+                        mix_type: 'mix_type',
+                        exposure_condition: 'exposure_condition',
+                        cement_type: 'cement_type',
+                        max_aggregate_size_mm: 'max_aggregate_size_mm',
+                        slump_range_mm: 'slump_range_mm',
+                        admixture_brand: 'admixture_brand',
+                      };
+                      NUM_FIELDS.forEach(([k]) => { map[k] = k; });
+                      
+                      const newText = { ...text };
+                      Object.entries(map).forEach(([stateKey, dataKey]) => {
+                        let val = data[dataKey];
+                        if (val != null && val !== '') {
+                          if (dataKey === 'cement_type') {
+                            const str = String(val).toLowerCase();
+                            if (str.includes('53')) val = 'OPC_53';
+                            else if (str.includes('43')) val = 'OPC_43';
+                          }
+                          if (dataKey === 'max_aggregate_size_mm') {
+                            const numStr = String(val).replace(/[^\d.]/g, '');
+                            if (numStr) val = numStr;
+                          }
+                          newText[stateKey] = String(val);
+                        }
+                      });
+                      
+                      // Also apply it to state
+                      setText(newText);
+                      setFile(f);
+                    }}
                   />
-                </label>
+                </div>
+                
+                {file && (
+                  <div className="qms-labreport-file" style={{ color: '#166534', background: '#dcfce7', padding: '6px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginTop: 12 }}>
+                    Attached: {file.name}
+                  </div>
+                )}
 
                 <Button type="submit" variant="primary" fullWidth icon={<FlaskConical size={16} />} disabled={busy || !gradeId || !file} style={{ marginTop: 12 }}>
                   {busy ? 'Submitting…' : 'Submit mix design'}

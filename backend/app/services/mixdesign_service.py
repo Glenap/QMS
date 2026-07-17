@@ -180,6 +180,7 @@ class MixDesignService:
         org = await self.auth.get_org_by_id(supplier.contractor_org_id)
         return MixSubmissionView(
             supplier_name=supplier.supplier_name,
+            project_id=project.project_id if project else None,
             project_name=project.project_name if project else None,
             registered_by=org.org_name if org else None,
             required_grades=await self._required_grades_info(supplier.supplier_id),

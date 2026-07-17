@@ -1,0 +1,42 @@
+.ocr-upload-zone {
+  margin: 1rem 0;
+  border: 2px dashed #cbd5e1;
+  border-radius: 8px;
+  background-color: #f8fafc;
+  transition: all 0.2s ease;
+}
+
+.ocr-upload-zone:hover {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+
+.ocr-file-input {
+  display: none;
+}
+
+.ocr-upload-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  cursor: pointer;
+  width: 100%;
+}
+
+.ocr-upload-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.ocr-upload-text {
+  font-weight: 500;
+  color: #334155;
+}
+
+.ocr-upload-hint {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+}

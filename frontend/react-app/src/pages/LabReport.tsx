@@ -187,6 +187,17 @@ export const LabReport: React.FC = () => {
                       </div>
                     ) : (
                       <div className="qms-labreport-form">
+                        <OcrUploadZone 
+                          hooks={{
+                            createJob: (f) => labReportApi.createOcrJob(token, f as File),
+                            getJob: (id) => labReportApi.getOcrJob(token, id),
+                          }}
+                          onSuccess={(data, f) => {
+                            setObserved(o => ({ ...o, [m.test_age_days]: data.observed_strength_mpa || '' }));
+                            setFiles((prev) => ({ ...prev, [m.test_age_days]: f }));
+                          }}
+                        />
+                        
                         <Input
                           label={`Observed strength (MPa)${requiredHint(m.test_age_days) != null ? ` · needs ≈ ${requiredHint(m.test_age_days)}` : ''}`}
                           type="number"
@@ -195,14 +206,11 @@ export const LabReport: React.FC = () => {
                           value={observed[m.test_age_days] ?? ''}
                           onChange={(e) => setObserved((o) => ({ ...o, [m.test_age_days]: e.target.value }))}
                         />
-                        <label className="qms-labreport-file">
-                          <Upload size={14} /> {files[m.test_age_days]?.name ?? 'Attach signed report PDF (required)'}
-                          <input
-                            type="file"
-                            accept="application/pdf,image/*"
-                            onChange={(e) => setFiles((f) => ({ ...f, [m.test_age_days]: e.target.files?.[0] ?? null }))}
-                          />
-                        </label>
+                        {files[m.test_age_days] && (
+                           <div className="qms-labreport-file" style={{ color: '#166534', background: '#dcfce7', padding: '6px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 12 }}>
+                             <Upload size={14} /> Attached: {files[m.test_age_days]?.name}
+                           </div>
+                        )}
                         <Button
                           type="button" variant="primary" size="sm" icon={<FlaskConical size={14} />}
                           onClick={() => submit(m.test_age_days)}

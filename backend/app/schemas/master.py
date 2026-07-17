@@ -542,6 +542,7 @@ class MixSubmissionView(BaseModel):
     """Public token view for the RMC mix-design submission page."""
 
     supplier_name: str
+    project_id: int | None = None
     project_name: str | None = None
     registered_by: str | None = None
     required_grades: list[RequiredGradeInfo] = []

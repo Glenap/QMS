@@ -26,6 +26,14 @@ dependencies = [
     # AI analyst agent (Phase 8)
     "langgraph>=0.1.5",
     "httpx==0.27.0",  # also drives the Ollama client at runtime
+    # OCR / Intelligent Document Processing (Phase 10)
+    "pdfplumber>=0.11.0",           # digital-PDF text + table extraction (zero OCR overhead)
+    "pdf2image>=1.17.0",            # rasterise PDF pages for Tesseract (needs poppler system pkg)
+    "pytesseract>=0.3.13",          # Tesseract OCR Python wrapper (needs tesseract system binary)
+    "pillow>=10.0.0",               # image handling required by pdf2image / pytesseract
+    "opencv-python-headless>=4.9.0.80",  # image enhancement: deskew, denoise, threshold
+    "camelot-py[cv]>=0.11.0",       # complex lattice/stream table extraction from PDFs
+    "pyyaml>=6.0.1",                # load per-doc-type YAML field-extraction templates
 ]
 
 [dependency-groups]

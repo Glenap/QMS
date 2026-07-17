@@ -21,6 +21,7 @@ from app.routers import (
     mix_designs,
     mix_submission,
     ncrs,
+    ocr,
     pours,
     projects,
     suppliers,
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
         allow_origins=[
             settings.FRONTEND_URL,
             "http://localhost:3000",
+            "http://localhost:3001",
             "http://localhost:5173",
         ],
         allow_credentials=True,
@@ -79,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
     app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
     app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(ocr.router, prefix=settings.API_V1_PREFIX)
 
     return app
 

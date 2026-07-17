@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { Layers, Truck } from 'lucide-react';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
+import { OcrUploadZone } from '../components/ocr/OcrUploadZone';
 import { dispatchFillApi } from '../api/dispatchFill';
 import { getApiErrorMessage } from '../api/client';
 import { str, num } from '../lib/coerce';
@@ -47,7 +48,7 @@ export const DispatchFill: React.FC = () => {
   const [result, setResult] = useState<TruckActionResult | null>(null);
 
   const {
-    register, handleSubmit, formState: { errors, isSubmitting },
+    register, handleSubmit, setValue, formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -127,6 +128,22 @@ export const DispatchFill: React.FC = () => {
             ) : (
               <>
                 {error && <div className="qms-auth-error">{error}</div>}
+                
+                <div style={{ marginBottom: 16 }}>
+                  <OcrUploadZone 
+                    hooks={{
+                      createJob: (f) => dispatchFillApi.createOcrJob(token, f as File),
+                      getJob: (id) => dispatchFillApi.getOcrJob(token, id),
+                    }}
+                    onSuccess={(data) => {
+                      if (data.vehicle_number) setValue('vehicle_number', data.vehicle_number);
+                      if (data.batch_number) setValue('batch_number', data.batch_number);
+                      if (data.challan_number) setValue('challan_number', data.challan_number);
+                      if (data.volume_cum) setValue('volume_cum', String(data.volume_cum));
+                    }}
+                  />
+                </div>
+
                 <form className="qms-auth-form" onSubmit={handleSubmit(onSubmit)} noValidate>
                   <Input label="Vehicle number" required error={errors.vehicle_number?.message} placeholder="e.g. KA-01-AB-1234" {...register('vehicle_number')} />
                   <Input label="Driver name" {...register('driver_name')} />

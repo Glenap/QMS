@@ -68,6 +68,23 @@ class Settings(BaseSettings):
     # Frontend URL — used in invitation and dispatch email links
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # ── OCR / Intelligent Document Processing (Phase 10) ─────────────────────
+    # OCR_ENGINE selects the extraction backend:
+    #   "pdfplumber"  — digital PDFs only (text layer), zero external deps
+    #   "tesseract"   — pdfplumber for digital pages + Tesseract for scanned
+    #   "azure_di"    — Azure Document Intelligence (highest accuracy, pay-per-page)
+    # TESSERACT_CMD  — full path to the tesseract binary; None = auto-detect.
+    # OCR_MAX_PAGES  — cap pages processed per PDF to control latency.
+    # AZURE_DI_*     — only used when OCR_ENGINE="azure_di".
+    OCR_ENGINE: str = "tesseract"          # "pdfplumber" | "tesseract" | "azure_di"
+    TESSERACT_CMD: str = ""                # e.g. "C:/Program Files/Tesseract-OCR/tesseract.exe"
+    OCR_MAX_PAGES: int = 20               # hard page cap per job
+    AZURE_DI_KEY: str = ""
+    AZURE_DI_ENDPOINT: str = ""
+    # Enable LLM-vision fallback when Tesseract confidence < threshold
+    OCR_LLM_VISION_FALLBACK: bool = True
+    OCR_TESSERACT_CONF_THRESHOLD: int = 60  # osd confidence floor (0-100)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

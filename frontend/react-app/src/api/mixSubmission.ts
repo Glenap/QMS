@@ -31,4 +31,18 @@ export const mixSubmissionApi = {
       .post<MixDesignResponse>('/external/mix-design', fd, { params: { token } })
       .then((r) => r.data);
   },
+
+  createOcrJob(token: string, file: File): Promise<{ job_id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return publicApi
+      .post<{ job_id: string }>('/external/mix-design/ocr', formData, { params: { token } })
+      .then((r) => r.data);
+  },
+
+  getOcrJob(token: string, jobId: string): Promise<any> {
+    return publicApi
+      .get<any>(`/external/mix-design/ocr/${jobId}`, { params: { token } })
+      .then((r) => r.data);
+  },
 };

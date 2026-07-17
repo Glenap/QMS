@@ -1,0 +1,139 @@
+.ocr-review-form {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.ocr-review-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.ocr-review-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.ocr-review-title-row h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.ocr-review-subtitle {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.ocr-review-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.ocr-field-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.ocr-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.375rem;
+}
+
+.ocr-field-label-row label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.ocr-field-conf {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.ocr-field-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+}
+
+.ocr-field-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.low-confidence-group .ocr-field-input {
+  border-color: #fca5a5;
+  background-color: #fef2f2;
+}
+
+.low-confidence-group .ocr-field-input:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.low-confidence-group label {
+  color: #991b1b;
+}
+
+.ocr-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.ocr-btn-secondary {
+  padding: 0.5rem 1rem;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ocr-btn-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.ocr-btn-primary {
+  padding: 0.5rem 1rem;
+  background: #2563eb;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ocr-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.ocr-btn-primary:disabled, .ocr-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

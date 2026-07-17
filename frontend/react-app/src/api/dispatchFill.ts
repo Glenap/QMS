@@ -26,4 +26,21 @@ export const dispatchFillApi = {
       .post<TruckActionResult>('/external/dispatch', data, { params: { token } })
       .then((r) => r.data);
   },
+
+  createOcrJob(token: string, file: File): Promise<{ job_id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return publicApi
+      .post<{ job_id: string }>('/external/dispatch/ocr', formData, { 
+        params: { token },
+        headers: { 'Content-Type': 'multipart/form-data' } // override default JSON
+      })
+      .then((r) => r.data);
+  },
+
+  getOcrJob(token: string, jobId: string): Promise<any> {
+    return publicApi
+      .get<any>(`/external/dispatch/ocr/${jobId}`, { params: { token } })
+      .then((r) => r.data);
+  },
 };

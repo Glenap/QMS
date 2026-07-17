@@ -50,4 +50,18 @@ export const labReportApi = {
       .post<LabReportResult>('/external/lab-report', fd, { params: { token } })
       .then((r) => r.data);
   },
+
+  createOcrJob(token: string, file: File): Promise<{ job_id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return publicApi
+      .post<{ job_id: string }>('/external/lab-report/ocr', formData, { params: { token } })
+      .then((r) => r.data);
+  },
+
+  getOcrJob(token: string, jobId: string): Promise<any> {
+    return publicApi
+      .get<any>(`/external/lab-report/ocr/${jobId}`, { params: { token } })
+      .then((r) => r.data);
+  },
 };
