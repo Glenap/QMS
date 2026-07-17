@@ -84,6 +84,23 @@ export interface RunPoint {
   grade_name: string | null;
   tower_name: string | null;
   reference: string | null;
+  sample_reference: string | null; // the cube number — the point's identity
+  sample_id: number | null;
+}
+
+export interface CusumPoint {
+  index: number; // cube number (1-based sequence)
+  sample_reference: string | null;
+  sample_id: number | null;
+  test_date: string;
+  observed_mpa: number;
+  deviation: number; // observed − target mean
+  cusum: number; // running cumulative sum
+}
+export interface CusumChart {
+  points: CusumPoint[];
+  grade_name: string | null;
+  target_mean: number | null;
 }
 export interface RunChart {
   points: RunPoint[];
@@ -122,4 +139,82 @@ export interface StrengthAgeChart {
   points: AgePoint[];
   grade_name: string | null;
   reference: string | null;
+}
+
+// ── Statistical tests (Student's t) ─────────────────────────────────────────
+
+export type Alternative = 'two_sided' | 'greater' | 'less';
+export type TTestBasis = 'fck' | 'target' | 'custom';
+
+export interface OneSampleParams {
+  grade_id?: number;
+  tower_id?: number;
+  supplier_id?: number;
+  contractor_id?: number;
+  basis?: TTestBasis;
+  mu0?: number;
+  confidence?: number;
+  alternative?: Alternative;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface OneSampleTTest {
+  sample_count: number;
+  mean: number;
+  std_dev: number;
+  std_error: number;
+  mu0: number;
+  mu0_basis: TTestBasis;
+  grade_name: string | null;
+  values: number[];
+  t_statistic: number;
+  df: number;
+  p_value: number;
+  alternative: Alternative;
+  confidence: number;
+  ci_low: number;
+  ci_high: number;
+  significant: boolean;
+  verdict: string;
+}
+
+export interface GroupFilter {
+  grade_id?: number;
+  tower_id?: number;
+  supplier_id?: number;
+  contractor_id?: number;
+  date_from?: string;
+  date_to?: string;
+  label?: string;
+}
+
+export interface TwoSampleRequest {
+  group_a: GroupFilter;
+  group_b: GroupFilter;
+  confidence: number;
+  alternative: Alternative;
+}
+
+export interface GroupSummary {
+  label: string;
+  sample_count: number;
+  mean: number | null;
+  std_dev: number | null;
+  values: number[];
+}
+
+export interface TwoSampleTTest {
+  group_a: GroupSummary;
+  group_b: GroupSummary;
+  mean_diff: number;
+  t_statistic: number;
+  df: number;
+  p_value: number;
+  alternative: Alternative;
+  confidence: number;
+  ci_low: number;
+  ci_high: number;
+  significant: boolean;
+  verdict: string;
 }

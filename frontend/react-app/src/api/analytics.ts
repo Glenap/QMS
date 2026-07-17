@@ -4,7 +4,10 @@
 
 import { api } from './client';
 import type {
+  CusumChart,
   DistributionCurve,
+  OneSampleParams,
+  OneSampleTTest,
   OverviewKpis,
   QualityAnalytics,
   QualityFilters,
@@ -13,6 +16,8 @@ import type {
   SupplierNcrCount,
   SupplierScore,
   TargetMeanChart,
+  TwoSampleRequest,
+  TwoSampleTTest,
 } from '../types/master';
 
 export const analyticsApi = {
@@ -51,6 +56,11 @@ export const analyticsApi = {
       .get<DistributionCurve>(`/projects/${projectId}/analytics/distribution`, { params: filters })
       .then((r) => r.data);
   },
+  cusum(projectId: number, filters: QualityFilters = {}): Promise<CusumChart> {
+    return api
+      .get<CusumChart>(`/projects/${projectId}/analytics/cusum`, { params: filters })
+      .then((r) => r.data);
+  },
   targetMean(projectId: number, filters: QualityFilters = {}): Promise<TargetMeanChart> {
     return api
       .get<TargetMeanChart>(`/projects/${projectId}/analytics/target-mean`, { params: filters })
@@ -59,6 +69,18 @@ export const analyticsApi = {
   strengthVsAge(projectId: number, filters: QualityFilters = {}): Promise<StrengthAgeChart> {
     return api
       .get<StrengthAgeChart>(`/projects/${projectId}/analytics/strength-vs-age`, { params: filters })
+      .then((r) => r.data);
+  },
+
+  // ── Statistical tests (Student's t) ──
+  oneSampleTTest(projectId: number, params: OneSampleParams): Promise<OneSampleTTest> {
+    return api
+      .get<OneSampleTTest>(`/projects/${projectId}/analytics/ttest/one-sample`, { params })
+      .then((r) => r.data);
+  },
+  twoSampleTTest(projectId: number, body: TwoSampleRequest): Promise<TwoSampleTTest> {
+    return api
+      .post<TwoSampleTTest>(`/projects/${projectId}/analytics/ttest/two-sample`, body)
       .then((r) => r.data);
   },
 };

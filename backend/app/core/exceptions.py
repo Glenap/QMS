@@ -288,6 +288,33 @@ class LabReportStateError(HTTPException):
 
 
 # ---------------------------------------------------------------------------
+# Analytics exceptions
+# ---------------------------------------------------------------------------
+
+class InsufficientSamplesError(HTTPException):
+    """A statistical test (t-test) was requested for a selection with too few
+    cube-strength results to compute a variance."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+
+class ReferenceGradeRequiredError(HTTPException):
+    """A one-sample t-test against the characteristic strength / target mean was
+    requested without selecting a single grade to read that reference from."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select a single grade to test against its characteristic "
+            "strength or target mean (or choose a custom reference value).",
+        )
+
+
+# ---------------------------------------------------------------------------
 # File-upload exceptions
 # ---------------------------------------------------------------------------
 

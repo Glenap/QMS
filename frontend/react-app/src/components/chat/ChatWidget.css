@@ -30,14 +30,24 @@
   outline-offset: 2px;
 }
 
-/* Draw the eye while the greeting is up. */
+/* Blink + bob for attention while the greeting is up (e.g. just after login). */
 .qms-chat-fab-pulse {
-  animation: qms-fab-pulse 2s ease-in-out infinite;
+  animation: qms-fab-pulse 1.5s ease-in-out infinite, qms-fab-bob 1.5s ease-in-out infinite;
 }
 
 @keyframes qms-fab-pulse {
   0%, 100% { box-shadow: 0 6px 20px rgba(29, 66, 176, 0.4); }
-  50% { box-shadow: 0 6px 20px rgba(29, 66, 176, 0.4), 0 0 0 10px rgba(59, 111, 224, 0.14); }
+  50% {
+    box-shadow:
+      0 6px 20px rgba(29, 66, 176, 0.45),
+      0 0 0 8px rgba(59, 111, 224, 0.18),
+      0 0 0 16px rgba(59, 111, 224, 0.08);
+  }
+}
+
+@keyframes qms-fab-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -110,10 +120,16 @@
 }
 
 .qms-chat-greeting-hi {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 700;
   color: var(--gray-900);
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+}
+
+.qms-chat-greeting-hi svg {
+  color: var(--blue);
 }
 
 .qms-chat-widget-panel {

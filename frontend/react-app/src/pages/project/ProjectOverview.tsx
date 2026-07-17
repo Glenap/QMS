@@ -247,7 +247,7 @@ export const ProjectOverview: React.FC = () => {
                 <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: 'var(--gray-500)' }} axisLine={false} tickLine={false} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="Open" name="Open" fill="var(--amber)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Open" name="Open" fill="#F59E0B" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Closed" name="Closed" fill="var(--green)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="Critical" name="Critical" fill="var(--red)" radius={[4, 4, 0, 0]} />
               </BarChart>

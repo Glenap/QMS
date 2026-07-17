@@ -26,7 +26,11 @@ from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from app.core import quality_engine
+from app.core import quality_engine, statistics
+from app.core.exceptions import (
+    InsufficientSamplesError,
+    ReferenceGradeRequiredError,
+)
 from app.models.master import (
     Grade,
     MixApprovalStatus,
@@ -46,8 +50,13 @@ from app.models.transaction import (
 from app.schemas.analytics import (
     AgePoint,
     CurvePoint,
+    CusumChart,
+    CusumPoint,
     DistributionCurve,
     GradeTrendPoint,
+    GroupFilter,
+    GroupSummary,
+    OneSampleTTest,
     OverviewKpis,
     QualityAnalytics,
     ResultBreakdown,
@@ -59,6 +68,8 @@ from app.schemas.analytics import (
     SupplierScore,
     TargetMeanChart,
     TargetMeanRow,
+    TwoSampleRequest,
+    TwoSampleTTest,
 )
 
 # Below this many results we fall back to the IS-10262 assumed σ rather than a
@@ -79,6 +90,39 @@ def _pct(numerator: int, denominator: int) -> float | None:
 def _passes(col) -> object:
     """SUM(1) over PASS rows — used for pass-rate numerators."""
     return func.sum(case((col == ResultStatus.PASS, 1), else_=0))
+
+
+# Human-readable reference names + verdict sentences for the t-tests.
+_BASIS_LABEL = {
+    "fck": "the characteristic strength (fck)",
+    "target": "the target mean strength",
+    "custom": "the reference value",
+}
+_ONE_SAMPLE_DIRECTION = {"greater": "above", "less": "below", "two_sided": "different from"}
+_TWO_SAMPLE_RELATION = {"greater": "higher than", "less": "lower than", "two_sided": "different from"}
+
+
+def _fmt_p(p: float) -> str:
+    return "p < 0.0001" if p < 0.0001 else f"p = {p:.4f}"
+
+
+def _one_sample_verdict(res: statistics.OneSampleResult, basis: str) -> str:
+    lead = "significantly" if res.significant else "not significantly"
+    return (
+        f"Mean strength {res.mean} MPa is {lead} {_ONE_SAMPLE_DIRECTION[res.alternative]} "
+        f"{_BASIS_LABEL.get(basis, 'the reference value')} ({res.mu0} MPa) at "
+        f"{res.confidence * 100:.0f}% confidence ({_fmt_p(res.p_value)})."
+    )
+
+
+def _two_sample_verdict(res: statistics.TwoSampleResult, label_a: str, label_b: str) -> str:
+    lead = "significantly" if res.significant else "not significantly"
+    return (
+        f"“{label_a}” (mean {res.mean1} MPa) is {lead} "
+        f"{_TWO_SAMPLE_RELATION[res.alternative]} “{label_b}” "
+        f"(mean {res.mean2} MPa) at {res.confidence * 100:.0f}% confidence "
+        f"({_fmt_p(res.p_value)})."
+    )
 
 
 class AnalyticsService:
@@ -277,6 +321,8 @@ class AnalyticsService:
                     Grade.grade_name,
                     Tower.tower_name,
                     Pour.pour_reference,
+                    CubeSample.sample_reference,
+                    CubeSample.sample_id,
                 )
                 .join(Grade, Grade.grade_id == Pour.grade_id)
                 .join(Tower, Tower.tower_id == Pour.tower_id)
@@ -288,8 +334,9 @@ class AnalyticsService:
             RunPoint(
                 test_date=d.isoformat(), observed_mpa=float(o),
                 grade_name=g, tower_name=t, reference=r,
+                sample_reference=sr, sample_id=sid,
             )
-            for d, o, g, t, r in rows
+            for d, o, g, t, r, sr, sid in rows
         ]
         chart = RunChart(points=points)
         grade = await self.session.get(Grade, grade_id) if grade_id else None
@@ -304,6 +351,72 @@ class AnalyticsService:
                 project.project_id, grade_id, fck, sigma
             )
             chart.mean = round(mean(observed), 2) if observed else None
+        return chart
+
+    async def cusum_chart(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        contractor_id: int | None = None,
+    ) -> CusumChart:
+        """CUSUM control chart: running Σ(observed − target mean) by cube number.
+        A sustained downward slope flags a fall in mean strength. Needs a single
+        grade (its target mean is the CUSUM datum)."""
+        chart = CusumChart()
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade is None:
+            return chart
+
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
+            ),
+        ]
+        rows = (
+            await self.session.execute(
+                self._ct_join(
+                    CubeTest.test_date,
+                    CubeTest.observed_strength_mpa,
+                    CubeSample.sample_reference,
+                    CubeSample.sample_id,
+                )
+                .where(*conds)
+                .order_by(CubeTest.test_date, CubeTest.test_id)
+            )
+        ).all()
+
+        fck = float(grade.min_strength_mpa)
+        observed = [float(o) for _d, o, _sr, _sid in rows]
+        target = await self._target_for_grade(
+            project.project_id, grade_id, fck, self._sigma(observed)
+        )
+        chart.grade_name = grade.grade_name
+        chart.target_mean = target
+
+        running = 0.0
+        points: list[CusumPoint] = []
+        for i, (d, o, sr, sid) in enumerate(rows, start=1):
+            deviation = float(o) - target
+            running += deviation
+            points.append(
+                CusumPoint(
+                    index=i,
+                    sample_reference=sr,
+                    sample_id=sid,
+                    test_date=d.isoformat(),
+                    observed_mpa=float(o),
+                    deviation=round(deviation, 2),
+                    cusum=round(running, 2),
+                )
+            )
+        chart.points = points
         return chart
 
     async def distribution(
@@ -458,6 +571,150 @@ class AnalyticsService:
             grade_name=rows[0][3] if rows else None,
             reference=rows[0][4] if rows else None,
         )
+
+    # ── Statistical tests (Student's t) ──────────────────────────────────────
+
+    async def one_sample_ttest(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        supplier_id: int | None = None,
+        contractor_id: int | None = None,
+        basis: str = "fck",
+        mu0: float | None = None,
+        confidence: float = 0.95,
+        alternative: str = "two_sided",
+    ) -> OneSampleTTest:
+        """One-sample t-test of the selection's mean strength against a reference
+        (the grade's characteristic strength ``fck``, its design target mean, or a
+        caller-supplied custom value)."""
+        conds = self._dim_conds(
+            CubeTest.test_date, date_from=date_from, date_to=date_to,
+            grade_id=grade_id, tower_id=tower_id, supplier_id=supplier_id,
+            contractor_id=contractor_id,
+        )
+        sample = await self._observed_strengths(project.project_id, conds)
+
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if basis in ("fck", "target"):
+            if grade is None:
+                raise ReferenceGradeRequiredError()
+            fck = float(grade.min_strength_mpa)
+            reference = fck if basis == "fck" else await self._target_for_grade(
+                project.project_id, grade_id, fck, self._sigma(sample)
+            )
+        else:  # custom
+            if mu0 is None:
+                raise ReferenceGradeRequiredError()
+            reference = float(mu0)
+
+        if len(sample) < 2:
+            raise InsufficientSamplesError(
+                "Need at least 2 cube-strength results in this selection to run a "
+                f"t-test (found {len(sample)})."
+            )
+
+        res = statistics.one_sample_t(
+            sample, reference, confidence=confidence, alternative=alternative
+        )
+        return OneSampleTTest(
+            sample_count=res.n,
+            mean=res.mean,
+            std_dev=res.std_dev,
+            std_error=res.std_error,
+            mu0=res.mu0,
+            mu0_basis=basis,
+            grade_name=grade.grade_name if grade else None,
+            values=[round(v, 2) for v in sample],
+            t_statistic=res.t_statistic,
+            df=res.df,
+            p_value=res.p_value,
+            alternative=res.alternative,  # type: ignore[arg-type]
+            confidence=res.confidence,
+            ci_low=res.ci_low,
+            ci_high=res.ci_high,
+            significant=res.significant,
+            verdict=_one_sample_verdict(res, basis),
+        )
+
+    async def two_sample_ttest(
+        self, project: Project, req: TwoSampleRequest
+    ) -> TwoSampleTTest:
+        """Welch two-sample t-test comparing two selections' mean strengths."""
+        a = await self._group_strengths(project.project_id, req.group_a)
+        b = await self._group_strengths(project.project_id, req.group_b)
+        label_a = await self._group_label(req.group_a, "Group A")
+        label_b = await self._group_label(req.group_b, "Group B")
+        for label, grp in ((label_a, a), (label_b, b)):
+            if len(grp) < 2:
+                raise InsufficientSamplesError(
+                    f"“{label}” has {len(grp)} cube-strength result(s); need at "
+                    "least 2 per group to compare."
+                )
+
+        res = statistics.two_sample_welch_t(
+            a, b, confidence=req.confidence, alternative=req.alternative
+        )
+        return TwoSampleTTest(
+            group_a=GroupSummary(
+                label=label_a, sample_count=res.n1, mean=res.mean1, std_dev=res.std_dev1,
+                values=[round(v, 2) for v in a],
+            ),
+            group_b=GroupSummary(
+                label=label_b, sample_count=res.n2, mean=res.mean2, std_dev=res.std_dev2,
+                values=[round(v, 2) for v in b],
+            ),
+            mean_diff=res.mean_diff,
+            t_statistic=res.t_statistic,
+            df=res.df,
+            p_value=res.p_value,
+            alternative=res.alternative,  # type: ignore[arg-type]
+            confidence=res.confidence,
+            ci_low=res.ci_low,
+            ci_high=res.ci_high,
+            significant=res.significant,
+            verdict=_two_sample_verdict(res, label_a, label_b),
+        )
+
+    async def _observed_strengths(self, project_id: int, conds_extra: list) -> list[float]:
+        """The acceptance (final-age) observed strengths for a filtered selection."""
+        conds = [Pour.project_id == project_id, self._final_test_cond(), *conds_extra]
+        rows = (
+            await self.session.execute(
+                self._ct_join(CubeTest.observed_strength_mpa).where(*conds)
+            )
+        ).scalars().all()
+        return [float(x) for x in rows]
+
+    async def _group_strengths(self, project_id: int, g: GroupFilter) -> list[float]:
+        return await self._observed_strengths(
+            project_id,
+            self._dim_conds(
+                CubeTest.test_date, date_from=g.date_from, date_to=g.date_to,
+                grade_id=g.grade_id, tower_id=g.tower_id, supplier_id=g.supplier_id,
+                contractor_id=g.contractor_id,
+            ),
+        )
+
+    async def _group_label(self, g: GroupFilter, fallback: str) -> str:
+        """A readable name for a comparison group: the caller's label, else a
+        composite of its set dimensions (grade · tower · supplier · dates)."""
+        if g.label:
+            return g.label
+        parts: list[str] = []
+        if g.grade_id and (grade := await self.session.get(Grade, g.grade_id)):
+            parts.append(grade.grade_name)
+        if g.tower_id and (tower := await self.session.get(Tower, g.tower_id)):
+            parts.append(tower.tower_name)
+        if g.supplier_id and (sup := await self.session.get(Supplier, g.supplier_id)):
+            parts.append(sup.supplier_name)
+        if g.date_from or g.date_to:
+            parts.append(f"{g.date_from or '…'} → {g.date_to or '…'}")
+        return " · ".join(parts) if parts else fallback
 
     @staticmethod
     def _sigma(observed: list[float]) -> float | None:

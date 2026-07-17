@@ -85,7 +85,7 @@ export const ChatWidget: React.FC<{ project: ProjectDetail }> = ({ project }) =>
             <X size={12} />
           </button>
           <button className="qms-chat-greeting-body" onClick={openWidget}>
-            <span className="qms-chat-greeting-hi">Hi! 👋</span>
+            <span className="qms-chat-greeting-hi"><Sparkles size={14} /> Hi there! 👋</span>
             <span>Ask me anything about this project&apos;s data →</span>
           </button>
         </div>

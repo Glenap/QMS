@@ -33,10 +33,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStorage.setUser(me.user);
   }, []);
 
+  // Re-arm the AI analyst greeting so it blinks "ask me anything" after each
+  // fresh sign-in (the widget suppresses it once shown per session).
+  const armAnalystGreeting = () => {
+    try { sessionStorage.removeItem('qms-analyst-greeted'); } catch { /* storage unavailable */ }
+  };
+
   const login = useCallback(async (email: string, password: string) => {
     const res = await authApi.login({ email, password });
     tokenStorage.setSession(res.access_token, res.refresh_token, res.user);
     setUser(res.user);
+    armAnalystGreeting();
     // Pull org details (login response doesn't include them).
     await refreshMe();
   }, [refreshMe]);
@@ -55,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await authApi.verifyOtp({ email, code });
     tokenStorage.setSession(res.access_token, res.refresh_token, res.user);
     setUser(res.user);
+    armAnalystGreeting();
     await refreshMe();
   }, [refreshMe]);
 

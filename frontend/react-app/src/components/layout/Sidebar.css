@@ -211,8 +211,11 @@
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 
-.qms-rail-group:hover .qms-rail-flyout,
-.qms-rail-group:focus-within .qms-rail-flyout {
+/* A single flyout is shown at a time, gated by React state (.is-open on the
+   group) rather than each group's own :hover/:focus-within — otherwise two tall,
+   top-anchored flyouts from adjacent rail icons can be visible at once and
+   overlap (see Sidebar.tsx openKey). */
+.qms-rail-group.is-open .qms-rail-flyout {
   opacity: 1;
   visibility: visible;
   transform: none;

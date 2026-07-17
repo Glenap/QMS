@@ -108,3 +108,57 @@ class TestStatisticalCharts:
         assert resp.status_code == 200, resp.text
         assert resp.json()["reference"] == "CUBE011"
         assert resp.json()["points"][0]["observed_mpa"] == 34.0
+
+    async def test_run_chart_points_carry_cube_reference(self, client, db_session):
+        # Each run-chart point is identified by its cube number (sample_reference)
+        # + sample_id, so the UI can label it and deep-link to traceability.
+        qe_token, pid, pour = await _pour_with_result(client, db_session, observed=34.0)
+        resp = await client.get(
+            f"{API}/projects/{pid}/analytics/run-chart",
+            params={"grade_id": pour["grade_id"]},
+            headers=bearer(qe_token),
+        )
+        pt = resp.json()["points"][0]
+        assert pt["sample_reference"] == "CS-001"
+        assert isinstance(pt["sample_id"], int)
+
+
+class TestCusumChart:
+    async def test_cusum_running_sum_by_cube(self, client, db_session):
+        _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+        grade_id = (
+            await client.get(f"{API}/projects/{pid}/pours/{pour_id}", headers=bearer(qe_token))
+        ).json()["grade_id"]
+        # M30 target mean (IS-10262 assumed σ=5) = 38.25.
+        for i, mpa in enumerate([40, 38, 36]):
+            sid = (
+                await _cast_sample(client, qe_token, pid, pour_id, sample_reference=f"CUBE-{i}")
+            ).json()["sample_id"]
+            await _record_test(
+                client, db_session, qe_token, pid, sid,
+                observed_strength_mpa=mpa, test_date=f"2026-07-2{i}",
+            )
+        resp = await client.get(
+            f"{API}/projects/{pid}/analytics/cusum",
+            params={"grade_id": grade_id},
+            headers=bearer(qe_token),
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["grade_name"] == "M30"
+        assert body["target_mean"] == 38.25
+        pts = body["points"]
+        assert [p["index"] for p in pts] == [1, 2, 3]
+        assert [p["observed_mpa"] for p in pts] == [40.0, 38.0, 36.0]
+        # deviations +1.75, −0.25, −2.25 → running 1.75, 1.5, −0.75
+        assert [p["cusum"] for p in pts] == [1.75, 1.5, -0.75]
+        assert pts[0]["sample_reference"] == "CUBE-0"
+
+    async def test_cusum_without_grade_is_empty(self, client, db_session):
+        qe_token, pid, _pour = await _pour_with_result(client, db_session, observed=34.0)
+        resp = await client.get(
+            f"{API}/projects/{pid}/analytics/cusum", headers=bearer(qe_token)
+        )
+        assert resp.status_code == 200
+        assert resp.json()["points"] == []
+        assert resp.json()["target_mean"] is None

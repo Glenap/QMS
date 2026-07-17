@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Badge } from '../../components/ui/Badge';
 import { CheckCircle, ChevronRight, Clock, Search, XCircle } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
@@ -91,7 +92,10 @@ export const Traceability: React.FC = () => {
   const { project } = useProject();
   const pid = project.project_id;
 
-  const [query, setQuery] = useState('');
+  // A ?q= param (e.g. from a run-chart point) pre-fills the search so the linked
+  // cube is found and auto-selected.
+  const [searchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   // Debounced search — empty query returns the project's most recent samples.

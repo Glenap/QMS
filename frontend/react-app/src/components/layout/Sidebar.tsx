@@ -61,6 +61,11 @@ export const Sidebar: React.FC = () => {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(COLLAPSE_KEY) !== '0'; } catch { return true; }
   });
+
+  // In rail (collapsed) mode, exactly one section flyout may be open at a time.
+  // Driving this from state (not independent CSS :hover/:focus-within per group)
+  // is what stops two tall, top-anchored flyouts from overlapping each other.
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const toggleCollapsed = () =>
     setCollapsed((c) => {
       const next = !c;
@@ -219,7 +224,18 @@ export const Sidebar: React.FC = () => {
           ? groups.map((g) => {
               const groupBadge = g.items.reduce((n, it) => n + (it.badge ?? 0), 0);
               return (
-                <div key={g.key} className="qms-rail-group">
+                <div
+                  key={g.key}
+                  className={`qms-rail-group ${openKey === g.key ? 'is-open' : ''}`}
+                  onMouseEnter={() => setOpenKey(g.key)}
+                  onMouseLeave={() => setOpenKey((k) => (k === g.key ? null : k))}
+                  onFocus={() => setOpenKey(g.key)}
+                  onBlur={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setOpenKey((k) => (k === g.key ? null : k));
+                    }
+                  }}
+                >
                   <button
                     type="button"
                     className={`qms-rail-item ${activeKey === g.key ? 'is-active' : ''}`}

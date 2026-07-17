@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, LogOut } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../hooks/useAuth';
 import { initials } from '../../lib/initials';
@@ -27,11 +27,6 @@ export const Topbar: React.FC<TopbarProps> = ({ title }) => {
     <header className="qms-topbar">
       <div className="qms-page-title">{title}</div>
       <div className="qms-topbar-actions">
-        <div className="qms-notif-btn">
-          <Bell size={18} color="var(--gray-500)" />
-          <div className="qms-notif-dot"></div>
-        </div>
-
         <div
           className="qms-avatar qms-avatar--clickable"
           role="button"

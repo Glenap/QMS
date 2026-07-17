@@ -120,6 +120,90 @@ export const ProjectLabs: React.FC = () => {
     }
   };
 
+  const labRow = (l: LabResponse) => (
+    <tr key={l.lab_id}>
+      <td className="font-medium">{l.lab_name}</td>
+      <td>{l.contractor_org_name ?? '—'}</td>
+      <td>{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
+      <td>{l.contact_email ?? l.contact_phone ?? '—'}</td>
+      <td>
+        <div className="qms-cell-actions">
+          {l.registered_by === 'CLIENT' && l.approval_status !== 'NOT_REQUIRED' && (
+            <Badge variant={APPROVAL[l.approval_status].variant} title={l.approval_reason ?? undefined}>
+              {APPROVAL[l.approval_status].label}
+            </Badge>
+          )}
+          {canReview && l.approval_status === 'PENDING' && (
+            <>
+              <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewLab(l, true)}>
+                Approve
+              </Button>
+              <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewLab(l, false)}>
+                Reject
+              </Button>
+            </>
+          )}
+          {l.is_blocked ? (
+            <Badge variant="fail" title={l.block_reason ?? undefined}>Blocked</Badge>
+          ) : (
+            <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
+          )}
+          {!l.is_blocked && l.status === 'CONFIRMED' && l.confirmed_at && (
+            <span className="qms-text-sm text-muted">{new Date(l.confirmed_at).toLocaleDateString()}</span>
+          )}
+          {canRegister && !l.is_blocked && l.status !== 'CONFIRMED' && l.contact_email && (
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Mail size={13} />}
+              disabled={resend.isPending && resend.variables === l.lab_id}
+              onClick={() => handleResend(l)}
+            >
+              {resend.isPending && resend.variables === l.lab_id ? 'Sending…' : 'Resend'}
+            </Button>
+          )}
+          {canBlock && (
+            <BlockControl
+              blocked={l.is_blocked}
+              busy={setBlocked.isPending}
+              onBlock={(reason) => toggleBlock(l, reason)}
+              onUnblock={() => toggleBlock(l)}
+            />
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+
+  const labSection = (title: string, hint: string, sectionRows: LabResponse[], action?: React.ReactNode) => (
+    <Card className="qms-form-section" padding="none">
+      <div className="qms-card-header">
+        <div>
+          <h3 className="qms-section-heading-plain">{title}</h3>
+          <p className="qms-text-sm text-muted" style={{ margin: '2px 0 0' }}>{hint}</p>
+        </div>
+        {action}
+      </div>
+      <div className="qms-table-container">
+        <table className="qms-table">
+          <thead><tr><th>Lab</th><th>Hired by</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>
+          <tbody>
+            {isPending ? (
+              <tr><td colSpan={5} className="text-muted">Loading…</td></tr>
+            ) : sectionRows.length === 0 ? (
+              <tr><td colSpan={5} className="text-muted">No {title.toLowerCase()} yet.</td></tr>
+            ) : (
+              sectionRows.map(labRow)
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+
+  const thirdParty = rows.filter((l) => l.lab_type === 'THIRD_PARTY');
+  const inHouse = rows.filter((l) => l.lab_type === 'IN_HOUSE');
+
   return (
     <div>
       {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load labs.')}</ErrorBox>}
@@ -150,84 +234,22 @@ export const ProjectLabs: React.FC = () => {
         </Card>
       )}
 
-      <Card className="qms-form-section" padding="none">
-        <div className="qms-card-header">
-          <h3 className="qms-section-heading-plain">Testing labs</h3>
-          {canRegister && !showForm && (
-            <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
-              Register lab
-            </Button>
-          )}
-        </div>
-        <div className="qms-table-container">
-          <table className="qms-table">
-            <thead><tr><th>Lab</th><th>Hired by</th><th>Type</th><th>Location</th><th>Contact</th><th>Confirmation</th></tr></thead>
-            <tbody>
-              {isPending ? (
-                <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="text-muted">No labs yet.</td></tr>
-              ) : (
-                rows.map((l) => (
-                  <tr key={l.lab_id}>
-                    <td className="font-medium">{l.lab_name}</td>
-                    <td>{l.contractor_org_name ?? '—'}</td>
-                    <td>{l.lab_type === 'THIRD_PARTY' ? 'Third party' : 'In-house'}</td>
-                    <td>{[l.city, l.state].filter(Boolean).join(', ') || '—'}</td>
-                    <td>{l.contact_email ?? l.contact_phone ?? '—'}</td>
-                    <td>
-                      <div className="qms-cell-actions">
-                        {l.registered_by === 'CLIENT' && l.approval_status !== 'NOT_REQUIRED' && (
-                          <Badge variant={APPROVAL[l.approval_status].variant} title={l.approval_reason ?? undefined}>
-                            {APPROVAL[l.approval_status].label}
-                          </Badge>
-                        )}
-                        {canReview && l.approval_status === 'PENDING' && (
-                          <>
-                            <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewLab(l, true)}>
-                              Approve
-                            </Button>
-                            <Button variant="ghost" size="sm" disabled={review.isPending} onClick={() => reviewLab(l, false)}>
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                        {l.is_blocked ? (
-                          <Badge variant="fail" title={l.block_reason ?? undefined}>Blocked</Badge>
-                        ) : (
-                          <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
-                        )}
-                        {!l.is_blocked && l.status === 'CONFIRMED' && l.confirmed_at && (
-                          <span className="qms-text-sm text-muted">{new Date(l.confirmed_at).toLocaleDateString()}</span>
-                        )}
-                        {canRegister && !l.is_blocked && l.status !== 'CONFIRMED' && l.contact_email && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            icon={<Mail size={13} />}
-                            disabled={resend.isPending && resend.variables === l.lab_id}
-                            onClick={() => handleResend(l)}
-                          >
-                            {resend.isPending && resend.variables === l.lab_id ? 'Sending…' : 'Resend'}
-                          </Button>
-                        )}
-                        {canBlock && (
-                          <BlockControl
-                            blocked={l.is_blocked}
-                            busy={setBlocked.isPending}
-                            onBlock={(reason) => toggleBlock(l, reason)}
-                            onUnblock={() => toggleBlock(l)}
-                          />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {labSection(
+        'Third-party labs',
+        'External / independent testing laboratories.',
+        thirdParty,
+        canRegister && !showForm ? (
+          <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
+            Register lab
+          </Button>
+        ) : undefined,
+      )}
+
+      {labSection(
+        'In-house labs',
+        'The contractor’s own on-site testing laboratories.',
+        inHouse,
+      )}
     </div>
   );
 };

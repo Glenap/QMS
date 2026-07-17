@@ -1,7 +1,52 @@
 .qms-analytics {
-  max-width: 1100px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   padding-bottom: 40px;
+}
+
+/* PDF export toolbar */
+.qms-an-export {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--gray-50, #f9fafb);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--gray-700);
+}
+.qms-an-export-label {
+  font-weight: 600;
+  color: var(--gray-900);
+}
+.qms-an-export label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.qms-an-export label input {
+  cursor: pointer;
+}
+.qms-an-export button {
+  margin-left: auto;
+}
+
+/* Chart helper text */
+.qms-chart-sub {
+  font-size: 12.5px;
+  color: var(--gray-500);
+  margin: -8px 0 12px;
+  line-height: 1.45;
+}
+.qms-chart-hint {
+  font-size: 12px;
+  color: var(--gray-400);
+  margin: 8px 0 0;
+  text-align: right;
 }
 
 .qms-analytics-header {

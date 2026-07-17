@@ -7,7 +7,10 @@ later, the AI query layer). Fields are additive by design: new metrics append,
 they never restructure an existing bundle, so forms/columns can keep growing.
 """
 
-from pydantic import BaseModel
+from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class OverviewKpis(BaseModel):
@@ -82,7 +85,9 @@ class RunPoint(BaseModel):
     observed_mpa: float
     grade_name: str | None = None
     tower_name: str | None = None
-    reference: str | None = None  # pour/sample reference
+    reference: str | None = None  # pour reference (kept for back-compat)
+    sample_reference: str | None = None  # the cube number — the point's identity
+    sample_id: int | None = None  # for deep-linking to traceability
 
 
 class RunChart(BaseModel):
@@ -95,6 +100,26 @@ class RunChart(BaseModel):
     individual_min: float | None = None  # fck − 3
     target_mean: float | None = None  # fck + 1.65·σ
     mean: float | None = None
+
+
+class CusumPoint(BaseModel):
+    index: int  # cube number — chronological sequence, 1-based
+    sample_reference: str | None = None
+    sample_id: int | None = None
+    test_date: str  # ISO date
+    observed_mpa: float
+    deviation: float  # observed − target mean
+    cusum: float  # running cumulative sum of deviations
+
+
+class CusumChart(BaseModel):
+    """CUSUM control chart (IS-456 / SPC): the running sum of (observed − target
+    mean) plotted by cube number. A sustained downward slope signals a fall in
+    mean strength earlier than raw pass/fail. Single-grade (one target mean)."""
+
+    points: list[CusumPoint] = []
+    grade_name: str | None = None
+    target_mean: float | None = None
 
 
 class CurvePoint(BaseModel):
@@ -153,3 +178,77 @@ class SupplierNcrCount(BaseModel):
     closed_count: int = 0
     critical_count: int = 0
     total: int = 0
+
+
+# ── Statistical tests (Student's t) ──────────────────────────────────────────
+# Inference over cube-strength results: does a selection meet spec (one-sample),
+# and do two selections differ (two-sample)? The confidence level defaults to
+# 95% and is caller-adjustable. See app/core/statistics.py for the pure maths.
+
+Alternative = Literal["two_sided", "greater", "less"]
+
+
+class OneSampleTTest(BaseModel):
+    """Result of testing a selection's mean cube strength against a reference."""
+
+    sample_count: int
+    mean: float
+    std_dev: float
+    std_error: float
+    mu0: float
+    mu0_basis: str  # 'fck' | 'target' | 'custom'
+    grade_name: str | None = None
+    values: list[float] = []  # the individual observed strengths (for plotting)
+    t_statistic: float
+    df: float
+    p_value: float
+    alternative: Alternative
+    confidence: float
+    ci_low: float
+    ci_high: float
+    significant: bool
+    verdict: str
+
+
+class GroupFilter(BaseModel):
+    """The dimension selection defining one comparison group (two-sample test)."""
+
+    grade_id: int | None = None
+    tower_id: int | None = None
+    supplier_id: int | None = None
+    contractor_id: int | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+    label: str | None = None  # optional display name for the group
+
+
+class TwoSampleRequest(BaseModel):
+    group_a: GroupFilter
+    group_b: GroupFilter
+    confidence: float = Field(default=0.95, gt=0.5, lt=1.0)
+    alternative: Alternative = "two_sided"
+
+
+class GroupSummary(BaseModel):
+    label: str
+    sample_count: int
+    mean: float | None = None
+    std_dev: float | None = None
+    values: list[float] = []  # the group's individual strengths (for plotting)
+
+
+class TwoSampleTTest(BaseModel):
+    """Welch two-sample t-test comparing two selections' mean cube strengths."""
+
+    group_a: GroupSummary
+    group_b: GroupSummary
+    mean_diff: float
+    t_statistic: float
+    df: float
+    p_value: float
+    alternative: Alternative
+    confidence: float
+    ci_low: float
+    ci_high: float
+    significant: bool
+    verdict: str
