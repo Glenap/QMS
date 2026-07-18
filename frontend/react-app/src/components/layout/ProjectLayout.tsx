@@ -47,11 +47,11 @@ export const ProjectLayout: React.FC = () => {
   const { data: project, isPending, error, refetch } = useProjectDetail(id);
 
   if (isPending) {
-    return <div className="qms-form-page"><p className="text-muted">Loading project…</p></div>;
+    return <div className="qms-workspace-page"><p className="text-muted">Loading project…</p></div>;
   }
   if (error || !project) {
     return (
-      <div className="qms-form-page">
+      <div className="qms-workspace-page">
         <button type="button" className="qms-pw-back" onClick={() => navigate('/app/projects')}>
           <ChevronLeft size={16} /> Back to projects
         </button>
@@ -61,7 +61,7 @@ export const ProjectLayout: React.FC = () => {
   }
 
   return (
-    <div className="qms-form-page">
+    <div className="qms-workspace-page">
       <div className="qms-pw">
         <div className="qms-pw-header">
           <div>

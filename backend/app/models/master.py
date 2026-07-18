@@ -324,7 +324,17 @@ class Supplier(Base):
     contact persons per contractor.
     """
     __tablename__ = "suppliers"
-    __table_args__ = {"schema": "master"}
+    # Unique token constraints are named explicitly to match the migrations.
+    # A column-level `unique=True` would render as `suppliers_<col>_key` under
+    # create_all (the test schema) while the migration created `uq_*`, so
+    # --autogenerate perpetually proposed dropping and recreating them.
+    __table_args__ = (
+        UniqueConstraint("confirmation_token", name="uq_suppliers_confirmation_token"),
+        UniqueConstraint(
+            "mix_submission_token", name="uq_supplier_mix_submission_token"
+        ),
+        {"schema": "master"},
+    )
 
     supplier_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     contractor_org_id: Mapped[int] = mapped_column(
@@ -369,10 +379,15 @@ class Supplier(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="PENDING"
     )
-    confirmation_token: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
-    )
+    confirmation_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
     confirmation_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # The confirmation link is a bearer credential sent by email. It expires, and
+    # is cleared once used, so a forwarded or leaked message can't be replayed
+    # months later to rewrite contact_email (the sink for every later dispatch,
+    # mix-submission and report link).
+    confirmation_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     confirmed_at: Mapped[datetime | None] = mapped_column(
@@ -399,7 +414,7 @@ class Supplier(Base):
     # confirmation token) — the RMC submits a mix design per grade the contractor
     # requested through this tokenised public page. ──
     mix_submission_token: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
+        String(100), nullable=True
     )
     mix_submission_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -530,7 +545,13 @@ class MixDesign(Base):
 
 class TestingLab(Base):
     __tablename__ = "testing_labs"
-    __table_args__ = {"schema": "master"}
+    # Explicit name to match the migration — see the note on Supplier.
+    __table_args__ = (
+        UniqueConstraint(
+            "confirmation_token", name="uq_testing_labs_confirmation_token"
+        ),
+        {"schema": "master"},
+    )
 
     lab_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     contractor_org_id: Mapped[int] = mapped_column(
@@ -575,10 +596,12 @@ class TestingLab(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="PENDING"
     )
-    confirmation_token: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
-    )
+    confirmation_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
     confirmation_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Expires and is cleared on use — see the note on Supplier.
+    confirmation_token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     confirmed_at: Mapped[datetime | None] = mapped_column(

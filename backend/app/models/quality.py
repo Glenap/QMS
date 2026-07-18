@@ -405,4 +405,43 @@ class Alert(Base):
     )
 
 
+class ConformanceFinding(Base):
+    """An inspector's defect classification of one conformance photo.
+
+    The photo lives in the document store (a CONFORMANCE_POST / _RCC document);
+    this row records which catalogued defect it shows, the chosen remediation
+    option, and notes. One finding per photo — ``document_id`` is unique and the
+    service upserts by it.
+    """
+
+    __tablename__ = "conformance_findings"
+    __table_args__ = (
+        Index("idx_conformance_finding_project", "project_id"),
+        {"schema": "quality"},
+    )
+
+    finding_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=False
+    )
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=False, unique=True
+    )
+    phase: Mapped[str] = mapped_column(String(10), nullable=False)  # 'POST' | 'RCC'
+    defect_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    defect_label: Mapped[str] = mapped_column(String(200), nullable=False)
+    severity: Mapped[str] = mapped_column(String(10), nullable=False)  # 'LOW' | 'MED' | 'HIGH'
+    remediation_choice: Mapped[str | None] = mapped_column(String(1), nullable=True)  # 'A' | 'B'
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 from app.models.transaction import CubeSample  # noqa: E402

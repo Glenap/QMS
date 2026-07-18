@@ -8,37 +8,50 @@ chart for the UI to render.
 
 import json
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.graph import build_agent_graph
 from app.ai.llm import LLMClient
+from app.ai.tools import CLARIFY_TOOL, project_dimensions
 from app.models.master import Project
-from app.schemas.chat import ChartSeries, ChartSpec, ChatTurn
+from app.schemas.chat import (
+    ChartSeries,
+    ChartSpec,
+    ChatTurn,
+    Clarification,
+    ClarifyDimension,
+    ClarifyOption,
+)
 
 SYSTEM_PROMPT = (
     'You are the quality analytics assistant for the construction project '
     '"{project_name}". You help with this project\'s pours, cube-strength tests, '
-    "NCRs, suppliers and traceability.\n"
-    "Use the provided tools to fetch data — never invent numbers. Base every figure "
-    "on tool results and report numbers with their units. If a tool returns no data, "
-    "say so plainly. You may call several tools at once for multi-part questions. "
-    "To answer a question about a specific cube, sample, pour, challan or vehicle by "
-    "its reference (e.g. 'which RMC supplied CUBE-011'), call search_traceability with "
-    "that reference — each result carries the RMC supplier, grade, location and worst "
-    "result; use trace_sample for the full lineage. For target-vs-achieved strength "
-    "questions use get_target_mean. "
-    "If a question is outside this project's quality data, say you can only help with "
-    "this project.\n"
-    "Answer format: open with a one-line direct answer, then present the details as "
-    "concise markdown bullet points — each bullet on its own line starting with "
-    "'- '. Keep every bullet short, give numbers with their units, and don't restate "
-    "the question or add filler.\n"
-    "If the question is ambiguous about the time period or about which grade, supplier "
-    "or tower it means, ask ONE short clarifying question that offers 2–4 concrete "
-    "options, instead of guessing — and do not call any tools on that turn."
+    "NCRs, suppliers and traceability, and nothing else.\n"
+    "TOOLS: Use the tools to fetch data — never invent numbers. Base every figure on "
+    "tool results and report numbers with their units. If a tool returns no data, say "
+    "so plainly. You may call several tools at once for multi-part questions. Answer a "
+    "reference lookup (e.g. 'which RMC supplied CUBE-011') with search_traceability, and "
+    "trace_sample for full lineage; use get_target_mean for target-vs-achieved strength. "
+    "The grade/supplier/tower filters take IDs — if the user names one (or you offered it "
+    "as a filter), the phrase carries its id like '(grade_id 3)'; pass that id straight "
+    "through, or call list_project_dimensions to resolve a bare name to its id.\n"
+    "CLARIFY FIRST on broad questions: if the question would scan a lot of data and gives "
+    "no scope — no period, tower, grade or supplier — (e.g. 'how is quality?', 'compare "
+    "suppliers', 'show all cube tests'), call ask_clarifying_question with a short question "
+    "and only the dimensions that matter, instead of guessing. Call it alone (no other "
+    "tool that turn), and only once — if the user already gave a scope, just answer.\n"
+    "ANSWER FORMAT: open with a one-line direct answer, then concise markdown bullets — "
+    "each on its own line starting with '- ', numbers with units, no filler, no restating "
+    "the question.\n"
+    "If a question is outside this project's quality data, say you can only help with this "
+    "project."
 )
+
+# Period presets offered when the model asks to clarify the time window.
+_PERIOD_PRESETS: list[tuple[int, str]] = [(7, "Last 7 days"), (30, "Last 30 days"), (90, "Last 90 days")]
 
 
 @dataclass
@@ -46,6 +59,7 @@ class AgentResult:
     answer: str
     tools_used: list[str]
     chart: ChartSpec | None = None
+    clarification: Clarification | None = None
 
 
 def _last_answer(messages: list[dict]) -> str:
@@ -60,9 +74,88 @@ def _tools_used(messages: list[dict]) -> list[str]:
     for msg in messages:
         for tc in msg.get("tool_calls") or []:
             name = tc.get("function", {}).get("name")
-            if name:
+            if name and name != CLARIFY_TOOL:
                 used.append(name)
     return used
+
+
+def _find_clarify(messages: list[dict]) -> dict | None:
+    """Return the ask_clarifying_question call's arguments, if the model asked."""
+    for msg in messages:
+        for tc in msg.get("tool_calls") or []:
+            if tc.get("function", {}).get("name") != CLARIFY_TOOL:
+                continue
+            args = tc["function"].get("arguments") or {}
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (ValueError, TypeError):
+                    args = {}
+            return args if isinstance(args, dict) else {}
+    return None
+
+
+async def build_clarification(
+    session: AsyncSession, project: Project, question: str, dimensions: list[str]
+) -> Clarification:
+    """Expand the model's requested dimensions into concrete, clickable options
+    drawn from the project's real towers / grades / suppliers (+ period presets).
+
+    Each option's ``value`` is a phrase the UI appends to the refined question,
+    carrying a concrete id or date range so the next turn needs no guessing.
+    """
+    wanted = [d for d in dimensions if d in ("period", "tower", "grade", "supplier")]
+    need_data = any(d in ("tower", "grade", "supplier") for d in wanted)
+    data = await project_dimensions(session, project) if need_data else {}
+    today = date.today()
+
+    def period_dim() -> ClarifyDimension:
+        opts = [
+            ClarifyOption(
+                label=lbl,
+                value=(
+                    f"from {(today - timedelta(days=n)).isoformat()} "
+                    f"to {today.isoformat()} ({lbl.lower()})"
+                ),
+            )
+            for n, lbl in _PERIOD_PRESETS
+        ]
+        opts.append(ClarifyOption(label="All time", value="over the entire project history"))
+        return ClarifyDimension(key="period", label="Time period", options=opts)
+
+    dims: list[ClarifyDimension] = []
+    for d in wanted:
+        if d == "period":
+            dims.append(period_dim())
+        elif d == "tower":
+            opts = [ClarifyOption(label="All towers", value="across all towers")]
+            opts += [
+                ClarifyOption(label=t["tower_name"], value=f'in tower "{t["tower_name"]}" (tower_id {t["tower_id"]})')
+                for t in data.get("towers", [])
+            ]
+            if len(opts) > 1:
+                dims.append(ClarifyDimension(key="tower", label="Tower", options=opts))
+        elif d == "grade":
+            opts = [ClarifyOption(label="All grades", value="for all grades")]
+            opts += [
+                ClarifyOption(label=g["grade_name"], value=f'for grade {g["grade_name"]} (grade_id {g["grade_id"]})')
+                for g in data.get("grades", [])
+            ]
+            if len(opts) > 1:
+                dims.append(ClarifyDimension(key="grade", label="Grade", options=opts))
+        elif d == "supplier":
+            opts = [ClarifyOption(label="All suppliers", value="from all suppliers")]
+            opts += [
+                ClarifyOption(label=s["supplier_name"], value=f'from supplier "{s["supplier_name"]}" (supplier_id {s["supplier_id"]})')
+                for s in data.get("suppliers", [])
+            ]
+            if len(opts) > 1:
+                dims.append(ClarifyDimension(key="supplier", label="Supplier", options=opts))
+
+    # Always give the user at least the time window to choose from.
+    if not dims:
+        dims.append(period_dim())
+    return Clarification(question=question or "Which slice should I analyse?", dimensions=dims)
 
 
 def _tool_results(messages: list[dict]) -> dict[str, Any]:
@@ -214,9 +307,23 @@ async def run_agent(
     seed.append({"role": "user", "content": question})
 
     final = await graph.ainvoke({"messages": seed, "iterations": 0})
-    answer = _last_answer(final["messages"]) or "I couldn't produce an answer."
+    messages = final["messages"]
+
+    # If the model chose to clarify, short-circuit: return the structured prompt
+    # (with real filter options) instead of an answer or chart.
+    clarify = _find_clarify(messages)
+    if clarify is not None:
+        question = str(clarify.get("question") or "").strip() or "Which slice should I analyse?"
+        raw_dims = clarify.get("dimensions")
+        dims = [str(d) for d in raw_dims] if isinstance(raw_dims, list) else []
+        clarification = await build_clarification(session, project, question, dims)
+        return AgentResult(
+            answer=question, tools_used=_tools_used(messages), clarification=clarification
+        )
+
+    answer = _last_answer(messages) or "I couldn't produce an answer."
     return AgentResult(
         answer=answer,
-        tools_used=_tools_used(final["messages"]),
-        chart=_derive_chart(final["messages"]),
+        tools_used=_tools_used(messages),
+        chart=_derive_chart(messages),
     )

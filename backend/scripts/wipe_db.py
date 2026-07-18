@@ -8,46 +8,22 @@ Usage (from the backend/ directory):
     uv run python scripts/wipe_db.py --yes          # wipe + re-seed catalogs
     uv run python scripts/wipe_db.py --yes --no-seed  # wipe everything, no re-seed
 
-Safety: refuses to run without --yes, and refuses entirely when
-ENVIRONMENT=production.
+Safety: refuses to run without --yes, and refuses unless ENVIRONMENT names a
+known-safe local environment. The wipe itself lives in app/database/wipe.py,
+shared with scripts/seed_demo.py.
 """
 
 import asyncio
 import sys
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
-
-import app.models  # noqa: F401 — registers every table on Base.metadata
 from app.config import settings
-from app.database.base import Base
-from app.database.seed import COMPONENTS, GRADES
-from app.models.master import Component, Grade
-
-# All tables across every schema; CASCADE handles FK ordering.
-_TABLES = ", ".join(
-    f'"{t.schema}"."{t.name}"' for t in Base.metadata.sorted_tables
-)
-_TRUNCATE_SQL = f"TRUNCATE TABLE {_TABLES} RESTART IDENTITY CASCADE"
-
-
-async def wipe(*, reseed: bool) -> None:
-    engine = create_async_engine(settings.DATABASE_URL, poolclass=NullPool)
-    async with engine.begin() as conn:
-        await conn.execute(text(_TRUNCATE_SQL))
-        if reseed:
-            await conn.execute(Grade.__table__.insert(), GRADES)
-            await conn.execute(Component.__table__.insert(), COMPONENTS)
-    await engine.dispose()
+from app.database.wipe import ensure_wipe_allowed, wipe_database
 
 
 def main() -> None:
     db_name = settings.DATABASE_URL.rsplit("/", 1)[-1]
 
-    if settings.is_production:
-        print("Refusing to wipe a PRODUCTION database. Aborting.")
-        sys.exit(1)
+    ensure_wipe_allowed("wipe the database")
 
     args = set(sys.argv[1:])
     if "--yes" not in args:
@@ -56,7 +32,7 @@ def main() -> None:
         sys.exit(1)
 
     reseed = "--no-seed" not in args
-    asyncio.run(wipe(reseed=reseed))
+    asyncio.run(wipe_database(reseed=reseed))
     print(
         f"Wiped all data in '{db_name}'."
         + (" Re-seeded grade + component catalogs." if reseed else "")

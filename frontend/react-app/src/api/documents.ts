@@ -76,6 +76,17 @@ export const documentsApi = {
       });
   },
 
+  // Fetch a document's bytes (bearer-authed) as an object URL — for rendering an
+  // image inline (<img src>) since the download URL itself can't carry the token.
+  // The caller MUST URL.revokeObjectURL it when done.
+  async objectUrl(projectId: number, documentId: number): Promise<string> {
+    const res = await api.get(
+      `/projects/${projectId}/documents/${documentId}/download`,
+      { responseType: 'blob' },
+    );
+    return URL.createObjectURL(res.data as Blob);
+  },
+
   remove(projectId: number, documentId: number): Promise<void> {
     return api
       .delete(`/projects/${projectId}/documents/${documentId}`)

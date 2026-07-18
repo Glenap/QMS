@@ -2,6 +2,7 @@
 // See backend/app/routers/auth.py.
 
 import { api } from './client';
+import { tokenStorage } from './tokenStorage';
 import type {
   LoginRequest,
   OrgRegisterRequest,
@@ -69,7 +70,10 @@ export const authApi = {
     return api.post<UserResponse>(`/auth/users/${userId}/reactivate`).then((r) => r.data);
   },
 
+  // Send the refresh token so the server revokes it too — blacklisting only the
+  // access token would leave a 7-day token able to mint new sessions.
   logout(): Promise<void> {
-    return api.post('/auth/logout').then(() => undefined);
+    const refresh_token = tokenStorage.getRefresh();
+    return api.post('/auth/logout', { refresh_token }).then(() => undefined);
   },
 };

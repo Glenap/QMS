@@ -115,6 +115,13 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class LogoutRequest(BaseModel):
+    """Optional body on logout. Supplying the refresh token revokes it too —
+    without it, logout only kills the short-lived access token."""
+
+    refresh_token: str | None = None
+
+
 class AccessTokenResponse(BaseModel):
     """Returned when refreshing — only new access token."""
     access_token: str

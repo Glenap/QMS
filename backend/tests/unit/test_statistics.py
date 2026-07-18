@@ -5,10 +5,13 @@ beta or the bisection PPF is caught immediately.
 """
 
 import math
+from statistics import NormalDist
 
 import pytest
 
 from app.core.statistics import (
+    graphical_summary,
+    modified_thompson_outliers,
     one_sample_t,
     student_t_cdf,
     student_t_ppf,
@@ -151,3 +154,101 @@ def test_two_sample_needs_two_per_group():
         two_sample_welch_t([1.0], [3, 4, 5])
     with pytest.raises(ValueError):
         two_sample_welch_t([1, 2, 3], [3.0])
+
+
+# ── Graphical summary (descriptive report) ───────────────────────────────────
+
+def test_graphical_summary_descriptive_moments():
+    # Classic 8-point set: mean 5, sample SD √(32/7) ≈ 2.138, median 4.5.
+    res = graphical_summary([2, 4, 4, 4, 5, 5, 7, 9])
+    assert res.n == 8
+    assert res.mean == pytest.approx(5.0)
+    assert res.std_dev == pytest.approx(2.138, abs=1e-3)
+    assert res.variance == pytest.approx(4.571, abs=1e-3)
+    assert res.median == pytest.approx(4.5)
+    assert res.minimum == 2.0 and res.maximum == 9.0
+    # CI for the mean is two-sided and brackets the sample mean.
+    assert res.ci_mean_low < 5.0 < res.ci_mean_high
+    # Histogram counts every observation exactly once.
+    assert sum(bar[2] for bar in res.histogram) == 8
+
+
+def test_graphical_summary_curve_shapes():
+    res = graphical_summary([10, 12, 14, 15, 16, 18, 20, 22, 24, 26])
+    assert len(res.fit_curve) == 61          # default curve_points
+    assert len(res.kde_curve) == 61
+    assert len(res.prob_points) == res.n     # one Q–Q point per observation
+    # Q–Q points are ordered by the observed value (ascending).
+    values = [p[0] for p in res.prob_points]
+    assert values == sorted(values)
+
+
+def test_graphical_summary_normal_data_passes_anderson_darling():
+    # Deterministic near-normal sample: the normal quantiles themselves.
+    nd = NormalDist(40.0, 5.0)
+    sample = [nd.inv_cdf((i + 0.5) / 40) for i in range(40)]
+    res = graphical_summary(sample)
+    assert res.ad_statistic is not None
+    assert res.ad_p_value > 0.05             # cannot reject normality
+    assert res.is_normal is True
+    assert abs(res.skewness) < 0.1           # symmetric
+
+
+def test_graphical_summary_skewed_data_flags_non_normal():
+    res = graphical_summary([1, 1, 1, 1, 2, 2, 3, 5, 8, 13, 21, 34, 55])
+    assert res.skewness > 0                  # right-skewed
+    assert res.ad_statistic is not None
+    assert res.is_normal is False            # AD rejects normality
+
+
+def test_graphical_summary_degenerate_constant_sample():
+    # All identical → σ = 0: moments defined, normality test undefined, no curves.
+    res = graphical_summary([7.0, 7.0, 7.0, 7.0])
+    assert res.std_dev == 0.0
+    assert res.ad_statistic is None and res.is_normal is None
+    assert res.fit_curve == [] and res.prob_points == []
+
+
+def test_graphical_summary_needs_two_observations():
+    with pytest.raises(ValueError):
+        graphical_summary([5.0])
+
+
+# ── Modified Thompson τ outlier detection ────────────────────────────────────
+
+def test_thompson_no_outliers_pdf_example():
+    # The worked example from Cimbala's "Outliers" note: n=10, x̄=49.64, S=0.530,
+    # most-suspect 50.5 has δ=0.86 < τS=0.952 → no outliers.
+    data = [48.9, 49.2, 49.2, 49.3, 49.3, 49.8, 49.9, 50.1, 50.2, 50.5]
+    res = modified_thompson_outliers(data)
+    assert res.n == 10
+    assert res.mean == pytest.approx(49.64, abs=0.01)
+    assert res.tau == pytest.approx(1.7984, abs=2e-3)      # table value for n=10
+    assert res.threshold == pytest.approx(0.9524, abs=3e-3)
+    assert res.outlier_count == 0
+    assert res.outliers == []
+    assert all(not p.is_outlier for p in res.points)
+
+
+def test_thompson_flags_a_clear_outlier():
+    data = [30, 30, 30, 30, 60]  # 60 is far from the tight cluster
+    res = modified_thompson_outliers(data)
+    assert res.outlier_count == 1
+    assert res.outliers == [60.0]
+    assert res.points[-1].is_outlier is True          # maps back in input order
+    assert res.clean_std_dev < res.std_dev            # removing it collapses spread
+    assert res.clean_mean == pytest.approx(30.0)
+
+
+def test_thompson_small_sample_is_untestable():
+    res = modified_thompson_outliers([10.0, 50.0])    # n<3 → test undefined
+    assert res.n == 2
+    assert res.outlier_count == 0
+    assert res.tau == 0.0
+
+
+def test_thompson_zero_variance_has_no_outliers():
+    res = modified_thompson_outliers([28.0] * 9)
+    assert res.std_dev == 0.0
+    assert res.outlier_count == 0
+    assert res.outliers == []

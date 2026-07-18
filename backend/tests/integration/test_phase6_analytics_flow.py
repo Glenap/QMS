@@ -106,8 +106,14 @@ class TestQualityAnalytics:
         assert trend[0]["grade_name"] == "M30"
         assert trend[0]["pass_rate_pct"] == 100.0
 
+        # Buckets are derived from the data's own range, not a fixed 35 MPa
+        # floor (which put every M25/M30 result into one bar). A single 32.0 MPa
+        # result therefore yields one bucket that contains it.
         dist = {b["label"]: b["count"] for b in body["strength_distribution"]}
-        assert dist == {"<35": 1}
+        assert sum(dist.values()) == 1
+        (label,) = dist
+        lo, hi = (float(x) for x in label.split("-"))
+        assert lo <= 32.0 <= hi
 
     async def test_quality_date_filter_excludes_out_of_range(self, client, db_session):
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)

@@ -2,7 +2,8 @@
 // results) as a recharts bar / line / pie. Mirrors the chart setup in
 // pages/project/Analytics.tsx. Guards against empty data.
 
-import React from 'react';
+import React, { useRef, useState } from 'react';
+import { Download } from 'lucide-react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -12,7 +13,29 @@ import type { ChartSpec } from '../../api/chat';
 const COLORS = ['var(--blue)', 'var(--green)', 'var(--amber)', 'var(--red)', '#8b5cf6', '#06b6d4'];
 
 export const ChatChart: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
+
   if (!spec.data || spec.data.length === 0 || spec.series.length === 0) return null;
+
+  // Rasterise the chart to a PNG the user can save. html2canvas is heavy, so it's
+  // imported on demand (only when they actually download).
+  const download = async () => {
+    if (!canvasRef.current) return;
+    setSaving(true);
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(canvasRef.current, {
+        scale: 2, backgroundColor: '#ffffff', logging: false,
+      });
+      const a = document.createElement('a');
+      a.href = canvas.toDataURL('image/png');
+      a.download = `${spec.title.replace(/\s+/g, '-').toLowerCase()}.png`;
+      a.click();
+    } finally {
+      setSaving(false);
+    }
+  };
 
   let chart: React.ReactElement;
   if (spec.type === 'pie') {
@@ -58,10 +81,18 @@ export const ChatChart: React.FC<{ spec: ChartSpec }> = ({ spec }) => {
 
   return (
     <div className="qms-chat-chart">
-      <div className="qms-chat-chart-title">{spec.title}</div>
-      <ResponsiveContainer width="100%" height={200}>
-        {chart}
-      </ResponsiveContainer>
+      <div className="qms-chat-chart-head">
+        <span className="qms-chat-chart-title">{spec.title}</span>
+        <button type="button" className="qms-chat-chart-dl" onClick={download} disabled={saving}
+          title="Download as PNG">
+          <Download size={13} /> {saving ? '…' : 'PNG'}
+        </button>
+      </div>
+      <div ref={canvasRef} className="qms-chat-chart-canvas">
+        <ResponsiveContainer width="100%" height={200}>
+          {chart}
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 };

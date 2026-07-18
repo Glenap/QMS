@@ -15,11 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.email import send_lab_confirmation_email
 from app.core.exceptions import (
+    AmbiguousContractorError,
+    ConfirmationExpiredError,
+    EntityBlockedError,
     NoAcceptedContractorError,
     NotFoundError,
     PermissionDeniedError,
     TruckStateError,
 )
+from app.core.external_tokens import confirmation_expiry, is_expired
+from app.core.fallback_log import fallback_detail
 from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
 from app.models.auth import User, UserRole
@@ -50,7 +55,7 @@ async def _try_send_lab_confirmation(**kwargs) -> None:
             "Lab confirmation email to %s failed (%s). Link: %s",
             kwargs.get("lab_email"),
             exc,
-            link,
+            fallback_detail(link),
         )
 
 
@@ -83,7 +88,17 @@ class LabService:
             )
             if not contractors:
                 raise NoAcceptedContractorError()
-            contractor_org_id = sorted(contractors)[0]
+            # Which contractor holds this must be stated when there's a choice.
+            # Defaulting to sorted(...)[0] silently attached it to whichever org
+            # happened to sort first.
+            if data.contractor_org_id is not None:
+                if data.contractor_org_id not in contractors:
+                    raise NotFoundError("Contractor")
+                contractor_org_id = data.contractor_org_id
+            elif len(contractors) > 1:
+                raise AmbiguousContractorError()
+            else:
+                contractor_org_id = next(iter(contractors))
             registered_by, approval_status = "CLIENT", "PENDING"
         else:
             contractor_org_id = user.org_id
@@ -99,7 +114,8 @@ class LabService:
             status="PENDING",
             confirmation_token=token,
             confirmation_sent_at=sent_at,
-            **data.model_dump(),
+            confirmation_token_expires_at=confirmation_expiry(),
+            **data.model_dump(exclude={"contractor_org_id"}),
         )
         lab = await self.repo.add(lab)
 
@@ -166,6 +182,8 @@ class LabService:
         if not lab.confirmation_token:
             lab.confirmation_token = create_invitation_token()
         lab.confirmation_sent_at = datetime.now(UTC)
+        # A resend restarts the window, so the new email can't arrive expired.
+        lab.confirmation_token_expires_at = confirmation_expiry()
         await self.session.flush()
         await self.session.refresh(lab)
 
@@ -196,6 +214,12 @@ class LabService:
         lab.block_reason = reason if blocked else None
         lab.blocked_by = user.user_id if blocked else None
         lab.blocked_at = datetime.now(UTC) if blocked else None
+        if blocked:
+            # Revoke the outstanding confirmation link — see supplier_service.
+            # Outstanding per-sample report tokens are refused separately, in
+            # CubeService, since they live on the sample rather than the lab.
+            lab.confirmation_token = None
+            lab.confirmation_token_expires_at = None
         await self.session.flush()
         return await self._to_response(lab)
 
@@ -266,6 +290,9 @@ class LabService:
             lab.confirmed_at = datetime.now(UTC)
             message = "Thanks — your details are confirmed."
 
+        # Single use — see supplier_service.submit_confirmation.
+        lab.confirmation_token = None
+        lab.confirmation_token_expires_at = None
         await self.session.flush()
         return ConfirmationResult(status=lab.status, message=message)
 
@@ -273,4 +300,8 @@ class LabService:
         lab = await self.repo.get_by(TestingLab.confirmation_token == token)
         if not lab:
             raise NotFoundError("Confirmation")
+        if is_expired(lab.confirmation_token_expires_at):
+            raise ConfirmationExpiredError()
+        if lab.is_blocked:
+            raise EntityBlockedError("lab", lab.block_reason)
         return lab

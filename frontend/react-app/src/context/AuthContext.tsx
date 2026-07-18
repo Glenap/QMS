@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { authApi } from '../api/auth';
 import { tokenStorage } from '../api/tokenStorage';
 import { AUTH_LOGOUT_EVENT } from '../api/client';
+import { queryClient } from '../lib/queryClient';
 import type {
   UserResponse,
   OrgResponse,
@@ -22,6 +23,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearSession = useCallback(() => {
     tokenStorage.clear();
+    // The query client is a module singleton and logout is a pure SPA
+    // navigation, so nothing tears the cache down on its own. Without this the
+    // next user to sign in on the same tab renders the previous user's
+    // projects/NCRs/analytics until each query passes staleTime.
+    queryClient.clear();
     setUser(null);
     setOrganisation(null);
   }, []);

@@ -11,7 +11,13 @@ deferred to the quality-engine phase — they aren't needed to populate the pour
 card and would couple this seed to FK-dependent rows.
 """
 
-from app.models.master import ComponentType, GradeType
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+
+from app.models.master import Component, ComponentType, Grade, GradeType
+
+# Callers differ: the scripts hold a session, the test fixture and the
+# engine-owning wipe hold a raw connection. Both can run a statement.
+Executor = AsyncConnection | AsyncSession
 
 # Standard Indian RMC concrete grades. min_strength_mpa = characteristic
 # compressive strength at 28 days (the "M" number).
@@ -40,3 +46,15 @@ COMPONENTS: list[dict] = [
     {"component_type": ComponentType.STAIRCASE.value, "description": "Staircase"},
     {"component_type": ComponentType.LIFT_CORE.value, "description": "Lift core"},
 ]
+
+
+async def seed_catalogs(executor: Executor) -> None:
+    """Insert the global reference catalogs.
+
+    Every path that rebuilds an empty schema needs these rows back: the test
+    fixture (which builds from the models), ``scripts/wipe_db.py`` and
+    ``scripts/seed_demo.py`` (which truncate first). The live DB gets them from
+    an Alembic data migration instead.
+    """
+    await executor.execute(Grade.__table__.insert(), GRADES)
+    await executor.execute(Component.__table__.insert(), COMPONENTS)

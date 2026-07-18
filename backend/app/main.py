@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.core.body_limit import BodySizeLimitMiddleware
 from app.routers import (
     ai_suggestions,
     alerts,
@@ -10,6 +11,7 @@ from app.routers import (
     catalog,
     chatbot,
     confirmations,
+    conformance,
     cube_tests,
     directory,
     dispatch_token,
@@ -35,6 +37,12 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json" if not settings.is_production else None,
+    )
+
+    # Cap request bodies before they are buffered. Must sit outside CORS so an
+    # oversized body is refused as early as possible.
+    app.add_middleware(
+        BodySizeLimitMiddleware, max_bytes=settings.MAX_UPLOAD_BYTES
     )
 
     # CORS — allow frontend dev server.
@@ -78,6 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix=settings.API_V1_PREFIX)
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
     app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(conformance.router, prefix=settings.API_V1_PREFIX)
     app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
 
     return app

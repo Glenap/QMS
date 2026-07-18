@@ -160,7 +160,12 @@ class TraceabilityService:
             ).scalars().all()
         )
 
-        return list(ids)[:_SEARCH_LIMIT]
+        # Ordered before truncating: `ids` is a set, and slicing it dropped
+        # whichever entries happened to iterate last. Small ints hash to
+        # themselves in CPython, so that skewed towards discarding the highest
+        # sample_ids — the most recent samples, which is what a search is
+        # usually looking for. Newest-first is also the more useful order.
+        return sorted(ids, reverse=True)[:_SEARCH_LIMIT]
 
     async def _records(self, sample_ids: list[int]) -> list[TraceRecord]:
         if not sample_ids:

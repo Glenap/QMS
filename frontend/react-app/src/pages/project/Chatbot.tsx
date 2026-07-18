@@ -33,7 +33,7 @@ export const Chatbot: React.FC = () => {
           </button>
         </div>
 
-        <ChatMessages messages={messages} loading={loading} />
+        <ChatMessages messages={messages} loading={loading} onSend={send} />
         <ChatInput onSend={send} disabled={loading} />
       </div>
 

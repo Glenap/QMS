@@ -18,6 +18,7 @@ from app.schemas.auth import (
     InvitationResponse,
     InviteRequest,
     LoginRequest,
+    LogoutRequest,
     MeResponse,
     OrgRegisterRequest,
     OtpChallengeResponse,
@@ -111,11 +112,12 @@ async def resend_otp(
 
 @router.post("/logout", status_code=204)
 async def logout(
+    data: LogoutRequest | None = None,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Blacklists the current access token."""
+    """Blacklists the current access token, and the refresh token if sent."""
     token_data = decode_token(credentials.credentials)
     if not token_data:
         raise InvalidTokenError()
@@ -123,6 +125,7 @@ async def logout(
     await service.logout(
         access_jti=token_data.jti,
         user_id=current_user.user_id,
+        refresh_token=data.refresh_token if data else None,
     )
 
 

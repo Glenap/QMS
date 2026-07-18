@@ -1,6 +1,13 @@
+/* The project workspace fills the content area (it already sits inside the
+   sidebar + 24px content padding) — no centered max-width, so there's no
+   side-gap on wide screens. */
+.qms-workspace-page {
+  width: 100%;
+  padding-bottom: 40px;
+}
+
 .qms-pw {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .qms-pw-back {

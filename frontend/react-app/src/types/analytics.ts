@@ -117,8 +117,66 @@ export interface DistributionCurve {
   mean: number | null;
   std_dev: number | null;
   fck: number | null;
+  target_mean: number | null; // RMC design target, else IS-10262 fck+1.65σ
   curve: CurvePoint[];
   histogram: StrengthBucket[];
+}
+
+// ── Graphical summary (Minitab-style descriptive report) ────────────────────
+export interface HistogramBar {
+  bin_low: number;
+  bin_high: number;
+  count: number;
+}
+export interface ProbPoint {
+  value: number; // ordered observed strength
+  theoretical: number; // theoretical normal quantile
+}
+export interface GraphicalSummary {
+  sample_count: number;
+  grade_name: string | null;
+  fck: number | null;
+  mean: number | null;
+  std_dev: number | null;
+  variance: number | null;
+  skewness: number | null;
+  kurtosis: number | null;
+  minimum: number | null;
+  q1: number | null;
+  median: number | null;
+  q3: number | null;
+  maximum: number | null;
+  ci_confidence: number;
+  ci_mean_low: number | null;
+  ci_mean_high: number | null;
+  ad_statistic: number | null;
+  ad_p_value: number | null;
+  is_normal: boolean | null;
+  bin_width: number | null;
+  histogram: HistogramBar[];
+  fit_curve: CurvePoint[]; // fitted normal PDF (density)
+  kde_curve: CurvePoint[]; // Gaussian KDE (density)
+  prob_points: ProbPoint[];
+}
+
+// ── Outlier scan (modified Thompson τ) ──────────────────────────────────────
+export interface OutlierPoint {
+  index: number; // 1-based chronological position
+  value: number;
+  is_outlier: boolean;
+}
+export interface OutlierAnalysis {
+  sample_count: number;
+  grade_name: string | null;
+  mean: number | null;
+  std_dev: number | null;
+  outlier_count: number;
+  clean_mean: number | null;
+  clean_std_dev: number | null;
+  tau: number | null;
+  threshold: number | null; // τ·S — rejection distance from the mean
+  points: OutlierPoint[];
+  outliers: number[];
 }
 
 export interface TargetMeanRow {

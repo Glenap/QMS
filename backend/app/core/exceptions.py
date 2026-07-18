@@ -203,6 +203,36 @@ class DateIntegrityError(HTTPException):
         )
 
 
+class AccountLockedError(HTTPException):
+    """Too many consecutive failed logins — the account is temporarily locked."""
+
+    def __init__(self, minutes: int):
+        super().__init__(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Too many failed sign-in attempts. Try again in {minutes} "
+                "minutes, or reset your password."
+            ),
+        )
+
+
+class ConfirmationExpiredError(HTTPException):
+    """A supplier/lab confirmation link is past its expiry or was already used.
+
+    410 rather than 404 so the page can say "this link is no longer valid, ask
+    for a new one" instead of implying the record doesn't exist.
+    """
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_410_GONE,
+            detail=(
+                "This confirmation link has expired or has already been used. "
+                "Please ask for a new one."
+            ),
+        )
+
+
 class EntityBlockedError(HTTPException):
     """A blocked RMC supplier or testing lab was used for new work (dispatch,
     mix-design request, or cube dispatch). Unblock it first."""
@@ -223,6 +253,18 @@ class EntityNotApprovedError(HTTPException):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"This {kind} is awaiting the contractor's approval and can't "
             "be used yet.",
+        )
+
+
+class AmbiguousContractorError(HTTPException):
+    """The client is registering an RMC/lab on a project with several accepted
+    contractors and didn't say which one holds it."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This project has more than one contractor — choose which "
+            "one this registration belongs to.",
         )
 
 

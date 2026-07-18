@@ -54,10 +54,15 @@ from app.schemas.analytics import (
     CusumPoint,
     DistributionCurve,
     GradeTrendPoint,
+    GraphicalSummary,
     GroupFilter,
     GroupSummary,
+    HistogramBar,
     OneSampleTTest,
+    OutlierAnalysis,
+    OutlierPointSchema,
     OverviewKpis,
+    ProbPoint,
     QualityAnalytics,
     ResultBreakdown,
     RunChart,
@@ -75,9 +80,6 @@ from app.schemas.analytics import (
 # Below this many results we fall back to the IS-10262 assumed σ rather than a
 # noisy computed one.
 _MIN_SAMPLES_FOR_STDEV = 30
-
-# Strength-distribution buckets (MPa), in display order.
-_BUCKET_ORDER = ["<35", "35-40", "40-45", "45-50", "50-55", "55+"]
 
 
 def _pct(numerator: int, denominator: int) -> float | None:
@@ -450,6 +452,10 @@ class AnalyticsService:
         grade = await self.session.get(Grade, grade_id) if grade_id else None
         if grade:
             curve.fck = float(grade.min_strength_mpa)
+            # Target mean = the RMC's stated design target, else IS-10262 fck+1.65σ.
+            curve.target_mean = await self._target_for_grade(
+                project.project_id, grade_id, float(grade.min_strength_mpa), self._sigma(observed)
+            )
         if len(observed) >= 2:
             mu, sigma = mean(observed), pstdev(observed)
             curve.mean, curve.std_dev = round(mu, 2), round(sigma, 2)
@@ -469,6 +475,117 @@ class AnalyticsService:
                 ]
         curve.histogram = await self._strength_distribution(conds)
         return curve
+
+    async def graphical_summary(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        contractor_id: int | None = None,
+        confidence: float = 0.95,
+    ) -> GraphicalSummary:
+        """Minitab-style graphical summary of the filtered strength dataset."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
+            ),
+        ]
+        observed = [
+            float(x)
+            for x in (
+                await self.session.execute(
+                    self._ct_join(CubeTest.observed_strength_mpa).where(*conds)
+                )
+            ).scalars().all()
+        ]
+        out = GraphicalSummary(sample_count=len(observed), ci_confidence=confidence)
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade:
+            out.grade_name = grade.grade_name
+            out.fck = float(grade.min_strength_mpa)
+        if len(observed) >= 2:
+            gs = statistics.graphical_summary(observed, confidence=confidence)
+            out.mean = gs.mean
+            out.std_dev = gs.std_dev
+            out.variance = gs.variance
+            out.skewness = gs.skewness
+            out.kurtosis = gs.kurtosis
+            out.minimum = gs.minimum
+            out.q1 = gs.q1
+            out.median = gs.median
+            out.q3 = gs.q3
+            out.maximum = gs.maximum
+            out.ci_mean_low = gs.ci_mean_low
+            out.ci_mean_high = gs.ci_mean_high
+            out.ad_statistic = gs.ad_statistic
+            out.ad_p_value = gs.ad_p_value
+            out.is_normal = gs.is_normal
+            out.bin_width = gs.bin_width
+            out.histogram = [
+                HistogramBar(bin_low=lo, bin_high=hi, count=c)
+                for lo, hi, c in gs.histogram
+            ]
+            out.fit_curve = [CurvePoint(x=x, y=y) for x, y in gs.fit_curve]
+            out.kde_curve = [CurvePoint(x=x, y=y) for x, y in gs.kde_curve]
+            out.prob_points = [
+                ProbPoint(value=v, theoretical=t) for v, t in gs.prob_points
+            ]
+        return out
+
+    async def outliers(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        contractor_id: int | None = None,
+    ) -> OutlierAnalysis:
+        """Modified Thompson τ outlier scan of the filtered strength dataset."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
+            ),
+        ]
+        observed = [
+            float(x)
+            for x in (
+                await self.session.execute(
+                    self._ct_join(CubeTest.observed_strength_mpa)
+                    .where(*conds)
+                    .order_by(CubeTest.test_date, CubeTest.test_id)
+                )
+            ).scalars().all()
+        ]
+        out = OutlierAnalysis(sample_count=len(observed))
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade:
+            out.grade_name = grade.grade_name
+        if len(observed) >= 2:
+            res = statistics.modified_thompson_outliers(observed)
+            out.mean = res.mean
+            out.std_dev = res.std_dev
+            out.outlier_count = res.outlier_count
+            out.clean_mean = res.clean_mean
+            out.clean_std_dev = res.clean_std_dev
+            out.tau = res.tau
+            out.threshold = res.threshold
+            out.outliers = res.outliers
+            out.points = [
+                OutlierPointSchema(index=i + 1, value=p.value, is_outlier=p.is_outlier)
+                for i, p in enumerate(res.points)
+            ]
+        return out
 
     async def target_mean_bar(
         self,
@@ -859,26 +976,23 @@ class AnalyticsService:
         ]
 
     async def _strength_distribution(self, conds: list) -> list[StrengthBucket]:
-        bucket = case(
-            (CubeTest.observed_strength_mpa < 35, "<35"),
-            (CubeTest.observed_strength_mpa < 40, "35-40"),
-            (CubeTest.observed_strength_mpa < 45, "40-45"),
-            (CubeTest.observed_strength_mpa < 50, "45-50"),
-            (CubeTest.observed_strength_mpa < 55, "50-55"),
-            else_="55+",
-        )
+        """Histogram of observed strengths, binned over the data's own range.
+
+        The bands used to be hardcoded starting at 35 MPa (<35, 35-40, …). On an
+        M25 or M30 project — the common case — every result lands under 35, so
+        the chart collapsed to a single meaningless bar. Binning from the actual
+        min/max keeps it informative at any grade.
+        """
         rows = (
             await self.session.execute(
-                self._ct_join(bucket.label("bucket"), func.count(CubeTest.test_id))
-                .where(*conds)
-                .group_by(bucket)
+                self._ct_join(CubeTest.observed_strength_mpa).where(*conds)
             )
-        ).all()
-        counts = {label: count for label, count in rows}
+        ).scalars().all()
+        observed = [float(x) for x in rows]
         return [
-            StrengthBucket(label=label, count=counts[label])
-            for label in _BUCKET_ORDER
-            if label in counts
+            StrengthBucket(label=f"{lo:g}-{hi:g}", count=count)
+            for lo, hi, count in statistics.histogram_buckets(observed)
+            if count
         ]
 
     async def _result_breakdown(self, conds: list) -> list[ResultBreakdown]:

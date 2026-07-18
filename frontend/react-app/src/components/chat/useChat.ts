@@ -45,7 +45,13 @@ export function useChat(pid: number, projectName: string) {
       const res = await chatApi.ask(pid, q, history);
       setMessages((p) => [
         ...p,
-        { role: 'assistant', text: res.answer, tools: res.tools_used, chart: res.chart ?? undefined },
+        {
+          role: 'assistant',
+          text: res.answer,
+          tools: res.tools_used,
+          chart: res.chart ?? undefined,
+          clarification: res.clarification ?? undefined,
+        },
       ]);
     } catch (err) {
       setMessages((p) => [

@@ -21,12 +21,17 @@ confidence interval is always the two-sided interval at the given confidence.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from statistics import mean, stdev
+from dataclasses import dataclass, field
+from statistics import NormalDist, mean, median, quantiles, stdev
 
 __all__ = [
+    "GraphicalSummaryResult",
     "OneSampleResult",
+    "OutlierPoint",
+    "ThompsonOutliersResult",
     "TwoSampleResult",
+    "graphical_summary",
+    "modified_thompson_outliers",
     "one_sample_t",
     "student_t_cdf",
     "student_t_ppf",
@@ -300,4 +305,283 @@ def two_sample_welch_t(
         ci_low=ci_low,
         ci_high=ci_high,
         significant=p < (1.0 - confidence),
+    )
+
+
+# ── Graphical summary (Minitab-style descriptive report) ─────────────────────
+#
+# One filtered strength dataset → the whole descriptive picture: moments,
+# quartiles, the Anderson–Darling normality test, a t-based CI for the mean, and
+# the curve data the front end overlays (histogram, fitted normal PDF, Gaussian
+# KDE, and normal-probability-plot points). No numpy/scipy — same house rule.
+
+_LOG_EPS = 1e-12  # clamp for the CDF terms in Anderson–Darling (avoid log 0)
+
+
+@dataclass
+class GraphicalSummaryResult:
+    n: int
+    mean: float
+    std_dev: float          # sample standard deviation (ddof = 1)
+    variance: float         # sample variance
+    skewness: float         # Fisher (population) moment estimate
+    kurtosis: float         # excess kurtosis (0 for a normal)
+    minimum: float
+    q1: float
+    median: float
+    q3: float
+    maximum: float
+    confidence: float
+    ci_mean_low: float
+    ci_mean_high: float
+    # Anderson–Darling normality; None when σ = 0 (degenerate, test undefined).
+    ad_statistic: float | None
+    ad_p_value: float | None
+    is_normal: bool | None
+    bin_width: float
+    # Curve data for the front end. histogram: (bin_low, bin_high, count);
+    # fit/kde: (x, density); prob_points: (ordered value, theoretical quantile).
+    histogram: list[tuple[float, float, int]] = field(default_factory=list)
+    fit_curve: list[tuple[float, float]] = field(default_factory=list)
+    kde_curve: list[tuple[float, float]] = field(default_factory=list)
+    prob_points: list[tuple[float, float]] = field(default_factory=list)
+
+
+def _anderson_darling_normal(
+    ordered: list[float], mu: float, sd: float
+) -> tuple[float, float, bool] | None:
+    """Anderson–Darling test for normality with estimated μ, σ.
+
+    Returns ``(A²*, p_value, is_normal)`` — the small-sample-adjusted statistic
+    and its p-value via the D'Agostino & Stephens (1986) approximation — or
+    ``None`` when σ = 0 (the test is undefined). ``is_normal`` is ``p > 0.05``.
+    """
+    n = len(ordered)
+    if sd <= 0.0 or n < 2:
+        return None
+    std_normal = NormalDist()
+    total = 0.0
+    for i, x in enumerate(ordered):
+        cdf_i = std_normal.cdf((x - mu) / sd)
+        cdf_rev = std_normal.cdf((ordered[n - 1 - i] - mu) / sd)
+        cdf_i = min(max(cdf_i, _LOG_EPS), 1.0 - _LOG_EPS)
+        cdf_rev = min(max(cdf_rev, _LOG_EPS), 1.0 - _LOG_EPS)
+        total += (2 * (i + 1) - 1) * (math.log(cdf_i) + math.log(1.0 - cdf_rev))
+    a2 = -n - total / n
+    a2_star = a2 * (1.0 + 0.75 / n + 2.25 / (n * n))
+    if a2_star >= 0.6:
+        p = math.exp(1.2937 - 5.709 * a2_star + 0.0186 * a2_star**2)
+    elif a2_star >= 0.34:
+        p = math.exp(0.9177 - 4.279 * a2_star - 1.38 * a2_star**2)
+    elif a2_star >= 0.2:
+        p = 1.0 - math.exp(-8.318 + 42.796 * a2_star - 59.938 * a2_star**2)
+    else:
+        p = 1.0 - math.exp(-13.436 + 101.14 * a2_star - 223.73 * a2_star**2)
+    p = min(max(p, 0.0), 1.0)
+    return round(a2_star, 4), round(p, 6), p > 0.05
+
+
+def _histogram(ordered: list[float], bins: int) -> tuple[list[tuple[float, float, int]], float]:
+    """Equal-width histogram of sorted ``ordered`` → ``(bars, bin_width)``."""
+    lo, hi = ordered[0], ordered[-1]
+    if hi <= lo:
+        hi = lo + 1.0
+    width = (hi - lo) / bins
+    counts = [0] * bins
+    for x in ordered:
+        idx = int((x - lo) / width)
+        counts[min(idx, bins - 1)] += 1
+    bars = [
+        (round(lo + i * width, 2), round(lo + (i + 1) * width, 2), counts[i])
+        for i in range(bins)
+    ]
+    return bars, width
+
+
+def histogram_buckets(
+    sample: list[float], *, bins: int = 6
+) -> list[tuple[float, float, int]]:
+    """Equal-width histogram over the sample's own range → ``(lo, hi, count)``.
+
+    Public wrapper over the same binning ``graphical_summary`` uses, so the
+    quality dashboard's strength distribution and the graphical summary agree on
+    where the bars fall.
+    """
+    if not sample:
+        return []
+    bars, _ = _histogram(sorted(float(x) for x in sample), bins)
+    return bars
+
+
+def graphical_summary(
+    sample: list[float], *, confidence: float = 0.95, curve_points: int = 61
+) -> GraphicalSummaryResult:
+    """Full descriptive summary of a strength dataset (Minitab graphical summary).
+
+    Raises ``ValueError`` for fewer than 2 observations (variance undefined).
+    """
+    _check_confidence(confidence)
+    n = len(sample)
+    if n < 2:
+        raise ValueError("graphical summary needs at least 2 observations")
+
+    ordered = sorted(float(x) for x in sample)
+    mu = mean(ordered)
+    sd = stdev(ordered)                        # sample SD (ddof = 1)
+    var = sd * sd
+    # Central moments (population/biased) for skewness & excess kurtosis.
+    m2 = sum((x - mu) ** 2 for x in ordered) / n
+    m3 = sum((x - mu) ** 3 for x in ordered) / n
+    m4 = sum((x - mu) ** 4 for x in ordered) / n
+    skew = m3 / m2**1.5 if m2 > 0 else 0.0
+    kurt = (m4 / (m2 * m2) - 3.0) if m2 > 0 else 0.0
+    med = median(ordered)
+    if n >= 4:
+        q1, _, q3 = quantiles(ordered, n=4, method="inclusive")
+    else:
+        q1, q3 = ordered[0], ordered[-1]
+
+    # t-based two-sided CI for the mean.
+    ci_low, ci_high = _ci(mu, sd / math.sqrt(n), float(n - 1), confidence)
+
+    ad = _anderson_darling_normal(ordered, mu, sd)
+    ad_stat, ad_p, is_normal = ad if ad is not None else (None, None, None)
+
+    bins = max(5, min(15, round(math.sqrt(n))))
+    histogram, bin_width = _histogram(ordered, bins)
+
+    fit_curve: list[tuple[float, float]] = []
+    kde_curve: list[tuple[float, float]] = []
+    prob_points: list[tuple[float, float]] = []
+    if sd > 0:
+        lo = ordered[0] - 0.5 * sd
+        hi = ordered[-1] + 0.5 * sd
+        step = (hi - lo) / (curve_points - 1)
+        h = 1.06 * sd * n ** (-0.2)            # Silverman bandwidth for the KDE
+        kde_norm = 1.0 / (n * h * math.sqrt(2 * math.pi))
+        pdf_norm = 1.0 / (sd * math.sqrt(2 * math.pi))
+        for k in range(curve_points):
+            x = lo + k * step
+            fit_curve.append(
+                (round(x, 2), round(pdf_norm * math.exp(-((x - mu) ** 2) / (2 * var)), 6))
+            )
+            kde_curve.append(
+                (
+                    round(x, 2),
+                    round(kde_norm * sum(math.exp(-0.5 * ((x - xi) / h) ** 2) for xi in ordered), 6),
+                )
+            )
+        dist = NormalDist(mu, sd)
+        for i, x in enumerate(ordered):
+            # Blom plotting position → theoretical normal quantile (Q–Q plot).
+            theo = dist.inv_cdf((i + 1 - 0.375) / (n + 0.25))
+            prob_points.append((round(x, 2), round(theo, 2)))
+
+    return GraphicalSummaryResult(
+        n=n,
+        mean=round(mu, 3),
+        std_dev=round(sd, 3),
+        variance=round(var, 3),
+        skewness=round(skew, 4),
+        kurtosis=round(kurt, 4),
+        minimum=round(ordered[0], 2),
+        q1=round(q1, 2),
+        median=round(med, 2),
+        q3=round(q3, 2),
+        maximum=round(ordered[-1], 2),
+        confidence=confidence,
+        ci_mean_low=ci_low,
+        ci_mean_high=ci_high,
+        ad_statistic=ad_stat,
+        ad_p_value=ad_p,
+        is_normal=is_normal,
+        bin_width=round(bin_width, 3),
+        histogram=histogram,
+        fit_curve=fit_curve,
+        kde_curve=kde_curve,
+        prob_points=prob_points,
+    )
+
+
+# ── Outlier detection (modified Thompson τ) ──────────────────────────────────
+#
+# Cimbala (Penn State), "Outliers", modified Thompson τ technique for a single
+# variable: reject the most-suspect point when its deviation exceeds τ·S, where
+#   τ = t_{α/2}·(n−1) / (√n · √(n−2 + t_{α/2}²)),  α = 0.05, df = n−2,
+# then recompute mean/S on the survivors and repeat one point at a time until no
+# further point is rejected. t_{α/2} is the two-tailed 5% critical value =
+# student_t_ppf(0.975, n−2).
+
+
+@dataclass
+class OutlierPoint:
+    value: float
+    is_outlier: bool
+
+
+@dataclass
+class ThompsonOutliersResult:
+    n: int
+    mean: float               # of the full sample
+    std_dev: float            # of the full sample (ddof = 1)
+    outlier_count: int
+    clean_mean: float         # after removing the outliers
+    clean_std_dev: float
+    tau: float                # τ for the first (full-sample) iteration
+    threshold: float          # τ·S — the first-iteration rejection distance
+    points: list[OutlierPoint]  # in input order (chronological)
+    outliers: list[float]       # rejected values, ascending
+
+
+def modified_thompson_outliers(sample: list[float]) -> ThompsonOutliersResult:
+    """Flag statistical outliers in a single-variable sample (Thompson τ).
+
+    Points are returned in input order with an ``is_outlier`` flag. With fewer
+    than 3 points the test is undefined, so none are flagged.
+    """
+    values = [float(x) for x in sample]
+    n0 = len(values)
+    full_mean = round(mean(values), 3) if n0 >= 1 else 0.0
+    full_std = round(stdev(values), 3) if n0 >= 2 else 0.0
+
+    outlier_idx: set[int] = set()
+    tau0 = 0.0
+    threshold0 = 0.0
+    remaining = list(enumerate(values))  # (original_index, value)
+    first = True
+    while len(remaining) >= 3:
+        rvals = [v for _, v in remaining]
+        m = mean(rvals)
+        s = stdev(rvals)
+        if s == 0.0:
+            break
+        n = len(rvals)
+        t_a2 = student_t_ppf(0.975, n - 2)  # two-tailed α = 0.05, df = n−2
+        tau = t_a2 * (n - 1) / (math.sqrt(n) * math.sqrt(n - 2 + t_a2 * t_a2))
+        threshold = tau * s
+        # The most-suspect point: the largest absolute deviation from the mean.
+        pos, (oidx, oval) = max(enumerate(remaining), key=lambda kv: abs(kv[1][1] - m))
+        if first:
+            tau0, threshold0, first = round(tau, 4), round(threshold, 3), False
+        if abs(oval - m) > threshold:
+            outlier_idx.add(oidx)
+            remaining.pop(pos)
+        else:
+            break
+
+    clean = [v for i, v in enumerate(values) if i not in outlier_idx]
+    clean_mean = round(mean(clean), 3) if len(clean) >= 1 else 0.0
+    clean_std = round(stdev(clean), 3) if len(clean) >= 2 else 0.0
+
+    return ThompsonOutliersResult(
+        n=n0,
+        mean=full_mean,
+        std_dev=full_std,
+        outlier_count=len(outlier_idx),
+        clean_mean=clean_mean,
+        clean_std_dev=clean_std,
+        tau=tau0,
+        threshold=threshold0,
+        points=[OutlierPoint(round(v, 2), i in outlier_idx) for i, v in enumerate(values)],
+        outliers=sorted(round(values[i], 2) for i in outlier_idx),
     )

@@ -26,6 +26,7 @@ from app.models.quality import (
     NCR,
     AISuggestion,
     Alert,
+    ConformanceFinding,
     CorrectiveAction,
     CubeTest,
     NCREmbedding,
@@ -51,6 +52,6 @@ __all__ = [
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
     "ActionItem", "InsituTest",
     "CubeTest", "NCR", "Retest", "NcrRmcNotification", "CorrectiveAction",
-    "AISuggestion", "NCREmbedding", "Alert",
+    "AISuggestion", "NCREmbedding", "Alert", "ConformanceFinding",
     "IngestionLog", "Embedding",
 ]

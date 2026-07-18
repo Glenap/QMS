@@ -59,6 +59,28 @@ from app.schemas.quality import NCRDetailResponse
 from app.services.ncr_service import NCRService
 
 
+def _embed_model_name(embedder: Embedder | None) -> str:
+    """The name the cached vectors are stamped with, and validated against.
+
+    It must track the embedder actually in use. Hardcoding OLLAMA_EMBED_MODEL
+    made the stamp a constant, so a cache written under one provider stayed
+    "valid" after switching to another: mismatched-dimension vectors then score
+    0.0 in cosine_similarity, which still passes RAG_MIN_SIMILARITY=0.0, and the
+    LLM gets grounded in arbitrary NCRs presented as similar cases — silently,
+    with a 200.
+    """
+    # Both concrete embedders carry .model; a test fake may not, so fall back to
+    # the configured provider's model name.
+    name = getattr(embedder, "model", None)
+    if isinstance(name, str) and name:
+        return name
+    return (
+        settings.EMBED_MODEL
+        if settings.AI_PROVIDER == "openai"
+        else settings.OLLAMA_EMBED_MODEL
+    )
+
+
 class AISuggestionService:
     def __init__(
         self,
@@ -75,7 +97,7 @@ class AISuggestionService:
         self.actions = CorrectiveActionRepository(session)
         self.suggestions = AISuggestionRepository(session)
         self.embeddings = NCREmbeddingRepository(session)
-        self.embed_model = settings.OLLAMA_EMBED_MODEL
+        self.embed_model = _embed_model_name(embedder)
 
     # ── Public API ───────────────────────────────────────────────────────────
 

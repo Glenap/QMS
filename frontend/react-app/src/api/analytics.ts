@@ -6,7 +6,9 @@ import { api } from './client';
 import type {
   CusumChart,
   DistributionCurve,
+  GraphicalSummary,
   OneSampleParams,
+  OutlierAnalysis,
   OneSampleTTest,
   OverviewKpis,
   QualityAnalytics,
@@ -54,6 +56,18 @@ export const analyticsApi = {
   distribution(projectId: number, filters: QualityFilters = {}): Promise<DistributionCurve> {
     return api
       .get<DistributionCurve>(`/projects/${projectId}/analytics/distribution`, { params: filters })
+      .then((r) => r.data);
+  },
+  graphicalSummary(projectId: number, filters: QualityFilters = {}, confidence?: number): Promise<GraphicalSummary> {
+    return api
+      .get<GraphicalSummary>(`/projects/${projectId}/analytics/graphical-summary`, {
+        params: { ...filters, ...(confidence != null ? { confidence } : {}) },
+      })
+      .then((r) => r.data);
+  },
+  outliers(projectId: number, filters: QualityFilters = {}): Promise<OutlierAnalysis> {
+    return api
+      .get<OutlierAnalysis>(`/projects/${projectId}/analytics/outliers`, { params: filters })
       .then((r) => r.data);
   },
   cusum(projectId: number, filters: QualityFilters = {}): Promise<CusumChart> {

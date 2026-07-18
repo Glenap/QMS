@@ -123,6 +123,15 @@ class User(Base):
     is_offboarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Optional profile picture, stored as a small data: URL (no file storage yet).
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Login throttling. Held in the DB rather than process memory so the lockout
+    # survives a restart — the hosted backend sleeps and redeploys, and an
+    # in-memory counter would reset on every wake, defeating the point.
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

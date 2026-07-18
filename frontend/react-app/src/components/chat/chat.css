@@ -150,12 +150,88 @@
   min-width: 280px;
 }
 
+.qms-chat-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .qms-chat-chart-title {
   font-size: 12px;
   font-weight: 600;
   color: var(--gray-700);
-  margin-bottom: 8px;
 }
+
+.qms-chat-chart-dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+.qms-chat-chart-dl:hover:not(:disabled) { color: var(--blue); border-color: var(--blue-mid); }
+.qms-chat-chart-dl:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Clarifying-question filter chips ───────────────────────────────────────── */
+.qms-clarify {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--gray-50, #f9fafb);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+}
+.qms-clarify-dim { margin-bottom: 10px; }
+.qms-clarify-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--gray-500);
+  margin-bottom: 5px;
+}
+.qms-clarify-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.qms-clarify-chip {
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12.5px;
+  color: var(--gray-700);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.qms-clarify-chip:hover:not(:disabled) { border-color: var(--blue-mid); }
+.qms-clarify-chip.is-sel {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.qms-clarify-chip:disabled { opacity: 0.6; cursor: default; }
+.qms-clarify-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  background: var(--blue);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+.qms-clarify-apply:hover:not(:disabled) { background: var(--blue-dark, #1a56db); }
+.qms-clarify-apply:disabled { opacity: 0.6; cursor: default; }
 
 /* Tool chips shown under an assistant answer (which data it consulted). */
 .qms-msg-tools {

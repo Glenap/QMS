@@ -30,6 +30,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     TruckStateError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import create_invitation_token
 from app.models.auth import User
 from app.models.master import Grade, MixApprovalStatus, MixDesign, Project, Supplier
@@ -77,7 +78,9 @@ async def _try_send(send, *, link: str, recipient: str, **kwargs) -> None:
     try:
         await send(**kwargs)
     except Exception as exc:  # noqa: BLE001 — best-effort email
-        logger.warning("Email to %s failed (%s). Link: %s", recipient, exc, link)
+        logger.warning(
+            "Email to %s failed (%s). Link: %s", recipient, exc, fallback_detail(link)
+        )
 
 
 class DispatchService:
@@ -110,7 +113,7 @@ class DispatchService:
             raise NotFoundError("Grade")
         # Only a grade with an approved mix design on the project may be
         # dispatched — the mix is the contract for what gets batched.
-        await self._ensure_grade_has_approved_mix(data.grade_id, pid)
+        await self._ensure_grade_has_approved_mix(data.grade_id, pid, data.supplier_id)
 
         dispatch = await self.repo.add(
             RMCDispatch(
@@ -150,13 +153,22 @@ class DispatchService:
         return await self._dispatch_response(dispatch, pour_id=None, truck=truck)
 
     async def _ensure_grade_has_approved_mix(
-        self, grade_id: int, project_id: int
+        self, grade_id: int, project_id: int, supplier_id: int
     ) -> None:
+        """The dispatched supplier must itself hold the approved mix.
+
+        Bound to the supplier, not just the grade: checking the grade alone let
+        supplier B be dispatched on the strength of supplier A's approved mix.
+        `_target_slump` then looked up supplier+grade, found nothing, and
+        `_grade_slump` treated "no target" as PASS — so the QE's mandatory
+        in-situ slump gate silently accepted any measurement.
+        """
         res = await self.session.execute(
             select(MixDesign.mix_design_id)
             .where(
                 MixDesign.project_id == project_id,
                 MixDesign.grade_id == grade_id,
+                MixDesign.supplier_id == supplier_id,
                 MixDesign.approval_status == MixApprovalStatus.APPROVED,
             )
             .limit(1)
@@ -371,7 +383,15 @@ class DispatchService:
             dispatch.volume_received_cum = received
             ordered = dispatch.volume_ordered_cum or 0
             dispatch.volume_remaining_cum = max(ordered - received, 0)
-            dispatch.is_complete = received >= ordered
+            # Both volumes are nullable, so the old `received >= ordered` read
+            # 0 >= 0 as "complete" and closed out a load nobody measured. A
+            # dispatch is only complete when a real delivered volume meets a
+            # real ordered volume.
+            dispatch.is_complete = (
+                truck.volume_cum is not None
+                and dispatch.volume_ordered_cum is not None
+                and float(received) >= float(ordered)
+            )
             await self.session.flush()
             await self._notify_result(project, dispatch, truck, "ACCEPTED")
         else:
@@ -389,15 +409,32 @@ class DispatchService:
     # ── QE inbox ───────────────────────────────────────────────────────────────
 
     async def qe_inbox(self, project: Project) -> list[QEReviewItem]:
-        """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE)."""
-        dispatches = await self.repo.list_for_project(project.project_id)
+        """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE).
+
+        Filtered in SQL, joining the supplier and grade in the same pass. It used
+        to load every dispatch on the project, run ~5 queries per dispatch, then
+        discard all but PENDING_QE — thousands of round-trips on a mature project
+        for an inbox that is normally near-empty, and this endpoint is polled.
+        """
+        rows = (
+            await self.session.execute(
+                select(RMCDispatch, TruckDispatch, Supplier, Grade)
+                .join(
+                    TruckDispatch,
+                    TruckDispatch.dispatch_id == RMCDispatch.dispatch_id,
+                )
+                .outerjoin(Supplier, Supplier.supplier_id == RMCDispatch.supplier_id)
+                .outerjoin(Grade, Grade.grade_id == RMCDispatch.grade_id)
+                .where(
+                    RMCDispatch.project_id == project.project_id,
+                    TruckDispatch.status == TruckStatus.PENDING_QE,
+                )
+                .order_by(RMCDispatch.dispatch_id)
+            )
+        ).all()
+
         items: list[QEReviewItem] = []
-        for dispatch in dispatches:
-            truck = await self.trucks.get_for_dispatch(dispatch.dispatch_id)
-            if not truck or truck.status != TruckStatus.PENDING_QE:
-                continue
-            supplier = await self.session.get(Supplier, dispatch.supplier_id)
-            grade = await self.session.get(Grade, dispatch.grade_id)
+        for dispatch, truck, supplier, grade in rows:
             items.append(
                 QEReviewItem(
                     dispatch_id=dispatch.dispatch_id,
@@ -450,6 +487,7 @@ class DispatchService:
         res = await self.session.execute(
             select(MixDesign.slump_range_mm)
             .where(
+                MixDesign.project_id == dispatch.project_id,
                 MixDesign.supplier_id == dispatch.supplier_id,
                 MixDesign.grade_id == dispatch.grade_id,
                 MixDesign.approval_status == MixApprovalStatus.APPROVED,

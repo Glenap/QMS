@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FlaskConical, Mail, Paperclip, Plus, Send } from 'lucide-react';
 import { Badge } from '../ui/Badge';
@@ -81,13 +81,20 @@ export const NCRDetailPanel: React.FC<PanelProps> = ({ pid, ncrId, isQE }) => {
     if (ncr) setRootCause(ncr.root_cause ?? '');
   }, [ncr?.root_cause]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pre-fill the RMC notice once from the NCR context.
+  // Pre-fill the RMC notice once per NCR, tracked by id.
+  //
+  // `composed` is derived from the whole `ncr` object, whose identity changes on
+  // every detail refetch — and each mutation in this panel invalidates that
+  // query. Depending on it re-seeded these fields mid-edit, silently replacing
+  // the QE's typed notice with the generic boilerplate, which could then be
+  // emailed to the supplier.
+  const seededNoticeFor = useRef<number | null>(null);
   useEffect(() => {
-    if (composed) {
-      setSubject(composed.subject);
-      setMessage(composed.message);
-    }
-  }, [composed]);
+    if (!ncr || !composed || seededNoticeFor.current === ncr.ncr_id) return;
+    seededNoticeFor.current = ncr.ncr_id;
+    setSubject(composed.subject);
+    setMessage(composed.message);
+  }, [ncr, composed]);
 
   // Await a mutation; surface a single error and clear it on the next attempt.
   const run = async (p: Promise<unknown>, fail = 'Action failed.') => {

@@ -32,10 +32,9 @@ import app.models  # noqa: F401  — registers every table on Base.metadata
 from app.config import settings
 from app.core.security import pwd_context
 from app.database.base import Base
-from app.database.seed import COMPONENTS, GRADES
+from app.database.seed import seed_catalogs
 from app.database.session import get_db
 from app.main import app
-from app.models.master import Component, Grade
 
 # Speed up the suite: bcrypt at its production 12-round cost dominates the
 # auth-heavy flows (register / verify-otp / accept-invitation each hash a
@@ -105,8 +104,7 @@ async def _bootstrap_database() -> None:
         for schema in SCHEMAS:
             await conn.execute(text(f'CREATE SCHEMA "{schema}"'))
         await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(Grade.__table__.insert(), GRADES)
-        await conn.execute(Component.__table__.insert(), COMPONENTS)
+        await seed_catalogs(conn)
     await engine.dispose()
 
 

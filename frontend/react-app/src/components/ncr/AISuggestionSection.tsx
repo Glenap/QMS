@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, ShieldAlert, Sparkles, TrendingDown, Wand2 } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -18,6 +18,16 @@ interface AIProps {
   isQE: boolean;
   isClosed: boolean;
 }
+
+// NCRs whose auto-generation has already been attempted this session.
+//
+// Deliberately module-level rather than a ref: NCRList only renders this panel
+// while the row is open, so the component unmounts on every collapse and a ref
+// guard reset with it. Because the trigger condition is "no suggestion exists",
+// a generation that failed (LLM down, quota exhausted) left the condition true
+// forever — so every expand fired another billable call, with nothing on screen
+// to explain why.
+const autoGenerateAttempted = new Set<number>();
 
 export const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClosed }) => {
   const suggestionQuery = useNcrSuggestion(pid, ncrId);
@@ -44,19 +54,18 @@ export const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClo
   // Auto-surface: generate the suggestion once when a QE opens an NCR that has
   // none yet (guarded by a ref so it fires a single time, and only after the
   // initial fetch has settled to "no suggestion").
-  const autofired = useRef(false);
   useEffect(() => {
     if (
       isQE && !isClosed
       && suggestionQuery.isFetched
       && suggestion === null
-      && !autofired.current
+      && !autoGenerateAttempted.has(ncrId)
       && !generate.isPending
     ) {
-      autofired.current = true;
+      autoGenerateAttempted.add(ncrId);
       void onGenerate();
     }
-  }, [isQE, isClosed, suggestionQuery.isFetched, suggestion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isQE, isClosed, suggestionQuery.isFetched, suggestion, ncrId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onApply = async () => {
     setActionError(null);

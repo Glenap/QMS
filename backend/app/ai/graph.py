@@ -16,7 +16,7 @@ from langgraph.graph import END, START, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.llm import LLMClient
-from app.ai.tools import TOOL_SPECS, run_tool
+from app.ai.tools import CLARIFY_TOOL, TOOL_SPECS, run_tool
 from app.config import settings
 from app.models.master import Project
 
@@ -65,7 +65,12 @@ def build_agent_graph(llm: LLMClient, session: AsyncSession, project: Project):
 
     def should_continue(state: AgentState) -> str:
         last = state["messages"][-1]
-        if last.get("tool_calls") and state["iterations"] < settings.AGENT_MAX_ITERATIONS:
+        calls = last.get("tool_calls") or []
+        # Asking to clarify ends the turn — the agent returns the structured
+        # question instead of running any tool or answering from partial data.
+        if any(tc["function"]["name"] == CLARIFY_TOOL for tc in calls):
+            return "end"
+        if calls and state["iterations"] < settings.AGENT_MAX_ITERATIONS:
             return "tools"
         return "end"
 

@@ -81,7 +81,16 @@ export const ProjectDispatches: React.FC = () => {
 
   const handleCopy = async (d: DispatchResponse) => {
     if (!d.truck) return;
-    await navigator.clipboard.writeText(fillLink(d.truck.token));
+    // navigator.clipboard is undefined on insecure origins — the likely case for
+    // a site tablet on a plain-HTTP LAN address — and writeText also rejects
+    // when the document isn't focused. Unhandled, the QE gets no link, no error,
+    // and an unhandled rejection in the console.
+    try {
+      await navigator.clipboard.writeText(fillLink(d.truck.token));
+    } catch {
+      toast.error('Could not copy the link. Copy it manually from the dispatch.');
+      return;
+    }
     setCopiedId(d.dispatch_id);
     setTimeout(() => setCopiedId((c) => (c === d.dispatch_id ? null : c)), 1500);
   };

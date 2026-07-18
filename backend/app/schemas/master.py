@@ -130,6 +130,10 @@ class ProjectStatusUpdate(BaseModel):
 
 class SupplierCreate(BaseModel):
     supplier_name: str
+    # Client-registration mode only: which accepted contractor holds this
+    # registration. Required when the project has more than one — picking for
+    # the caller attached it to whichever org sorted first.
+    contractor_org_id: int | None = None
     plant_name: str | None = None
     plant_location: str | None = None
     gst_number: str | None = None
@@ -198,6 +202,10 @@ class ApprovalReject(BaseModel):
 
 class LabCreate(BaseModel):
     lab_name: str
+    # Client-registration mode only: which accepted contractor holds this
+    # registration. Required when the project has more than one — picking for
+    # the caller attached it to whichever org sorted first.
+    contractor_org_id: int | None = None
     lab_type: LabType = LabType.THIRD_PARTY
     registration_number: str | None = None
     gst_number: str | None = None

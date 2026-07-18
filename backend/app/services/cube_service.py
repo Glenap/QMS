@@ -15,7 +15,7 @@ lab) so the cube-results table and NCR list render without extra lookups.
 """
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -32,6 +32,7 @@ from app.core.exceptions import (
     NotFoundError,
     UnsupportedFileTypeError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import create_invitation_token
 from app.core.storage import make_key, storage
 from app.models.auth import User
@@ -404,7 +405,7 @@ class CubeService:
             link = f"{settings.FRONTEND_URL}/external/lab-report?token={sample.report_token}"
             logger.warning(
                 "Lab report email to %s failed (%s). Link: %s",
-                lab.contact_email, exc, link,
+                lab.contact_email, exc, fallback_detail(link),
             )
         return True
 
@@ -443,6 +444,14 @@ class CubeService:
         sample = await self.samples.get_by(CubeSample.report_token == token)
         if not sample:
             raise NotFoundError("Report")
+        # A blocked lab keeps the per-sample report links it was already sent.
+        # Without this it could still write strength results — and so raise or
+        # suppress NCRs — after being distrusted. The token lives on the sample,
+        # so lab_service.set_blocked can't revoke it; it's refused here instead.
+        if sample.lab_id is not None:
+            lab = await self.session.get(TestingLab, sample.lab_id)
+            if lab and lab.is_blocked:
+                raise EntityBlockedError("lab", lab.block_reason)
         return sample
 
     async def _validate_lab(self, lab_id: int | None, project_id: int) -> None:
@@ -478,7 +487,10 @@ class CubeService:
                 raised_by=user.user_id if user else None,
             )
         )
-        ncr.ncr_number = f"NCR-{date.today():%Y%m%d}-{ncr.ncr_id:04d}"
+        # UTC, to match raised_at (func.now() on a timestamptz column). With
+        # server-local today an NCR raised near midnight could carry a number
+        # dated a day away from its own timestamp.
+        ncr.ncr_number = f"NCR-{datetime.now(UTC).date():%Y%m%d}-{ncr.ncr_id:04d}"
         await self.session.flush()
         return ncr
 

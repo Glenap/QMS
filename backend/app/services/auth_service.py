@@ -3,14 +3,20 @@ auth_service.py — all auth business logic
 """
 
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.email import send_invitation_email, send_otp_email
+from app.core.email import (
+    send_account_exists_email,
+    send_invitation_email,
+    send_otp_email,
+)
 from app.core.exceptions import (
     AccountDeactivatedError,
+    AccountLockedError,
     AlreadyExistsError,
     EmailAlreadyVerifiedError,
     EmailNotVerifiedError,
@@ -22,6 +28,7 @@ from app.core.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import (
     create_access_token,
     create_invitation_token,
@@ -64,6 +71,25 @@ MAX_OTP_ATTEMPTS = 5
 # Minimum gap between OTP (re)issues for an email — throttles the resend
 # email-bomb vector. A resend inside this window is a silent no-op.
 OTP_RESEND_COOLDOWN_SECONDS = 60
+# Consecutive wrong passwords before an account is temporarily locked. Password
+# login previously had no cap at all — only the OTP paths were bounded — leaving
+# bcrypt's cost as the sole brake on sustained online guessing.
+MAX_LOGIN_ATTEMPTS = 10
+LOGIN_LOCKOUT_MINUTES = 15
+
+_dummy_hash: str | None = None
+
+
+def _dummy_password_hash() -> str:
+    """A hash of an unguessable value, for verifying against a missing account.
+
+    Computed lazily and cached: bcrypt at cost 12 is deliberately slow, and
+    doing it at import would add that to every cold start.
+    """
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = hash_password(secrets.token_urlsafe(32))
+    return _dummy_hash
 
 
 async def _try_send_invitation_email(**kwargs) -> None:
@@ -82,8 +108,17 @@ async def _try_send_invitation_email(**kwargs) -> None:
             "Invitation email to %s failed (%s). Accept link: %s",
             invited_email,
             exc,
-            accept_url,
+            fallback_detail(accept_url),
         )
+
+
+async def _try_send_account_exists(user: User) -> None:
+    """Best-effort — a mail failure must not turn the generic register response
+    into an error, which would re-open the existence oracle it exists to close."""
+    try:
+        await send_account_exists_email(email=user.email, full_name=user.full_name)
+    except Exception as exc:  # noqa: BLE001 — best-effort email, must not 500
+        logger.warning("Account-exists notice to %s failed (%s).", user.email, exc)
 
 
 async def _try_send_otp_email(email: str, code: str, full_name: str | None) -> None:
@@ -94,7 +129,12 @@ async def _try_send_otp_email(email: str, code: str, full_name: str | None) -> N
     try:
         await send_otp_email(email=email, code=code, full_name=full_name)
     except Exception as exc:  # noqa: BLE001 — best-effort email, must not 500
-        logger.warning("OTP email to %s failed (%s). Code: %s", email, exc, code)
+        logger.warning(
+            "OTP email to %s failed (%s). Code: %s",
+            email,
+            exc,
+            fallback_detail(code),
+        )
 
 
 class AuthService:
@@ -110,8 +150,20 @@ class AuthService:
         inactive and must verify the emailed OTP (via verify_otp) before any
         tokens are issued.
         """
-        if await self.repo.email_exists(data.contact_email):
-            raise AlreadyExistsError("Email")
+        # An existing address returns the SAME response as a fresh one. A 409
+        # "Email already exists" on an unauthenticated endpoint is an account
+        # existence oracle — anyone could test addresses in bulk. The real owner
+        # is told out-of-band instead, by email.
+        existing = await self.repo.get_user_by_email(data.contact_email)
+        if existing:
+            if existing.is_active:
+                await _try_send_account_exists(existing)
+            else:
+                # Never verified — treat this as "I didn't get the code" and
+                # reissue, which is what the caller actually wants. The resend
+                # cooldown inside _issue_otp still applies.
+                await self._issue_otp(existing, purpose="SIGNUP")
+            return OtpChallengeResponse(email=data.contact_email)
 
         org = await self.repo.create_org(
             org_name=data.org_name,
@@ -139,8 +191,27 @@ class AuthService:
         """Validates credentials and returns access + refresh tokens."""
         user = await self.repo.get_user_by_email(data.email)
 
-        if not user or not verify_password(data.password, user.hashed_password):
+        if user and user.locked_until and user.locked_until > datetime.now(UTC):
+            remaining = user.locked_until - datetime.now(UTC)
+            raise AccountLockedError(max(1, int(remaining.total_seconds() // 60)))
+
+        # Always run a verify, even when the email is unknown, so a missing
+        # account costs the same time as a wrong password. Short-circuiting on
+        # `not user` left a bcrypt-sized timing difference that answered "does
+        # this address have an account?" without authenticating.
+        password_ok = verify_password(
+            data.password,
+            user.hashed_password if user else _dummy_password_hash(),
+        )
+        if not user or not password_ok:
+            if user:
+                await self._register_failed_login(user)
             raise InvalidCredentialsError()
+
+        if user.failed_login_attempts or user.locked_until:
+            user.failed_login_attempts = 0
+            user.locked_until = None
+            await self.session.flush()
 
         # Offboarded by an admin — block before the OTP path so they can't
         # re-verify their way back in.
@@ -153,6 +224,25 @@ class AuthService:
             raise EmailNotVerifiedError()
 
         return self._build_token_response(user)
+
+    async def _register_failed_login(self, user: User) -> None:
+        """Count a wrong password, and lock the account once the cap is hit.
+
+        Deliberately ``commit()``s — the second documented exception to the
+        flush-only rule, for the same reason as the OTP attempt counter above.
+        The caller raises immediately after this returns, and ``get_db`` rolls
+        back on an error, so a flush alone would discard the increment and the
+        cap would never bite.
+        """
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        if user.failed_login_attempts >= MAX_LOGIN_ATTEMPTS:
+            user.locked_until = datetime.now(UTC) + timedelta(
+                minutes=LOGIN_LOCKOUT_MINUTES
+            )
+            # Reset the counter so the next lockout needs a fresh run of
+            # failures rather than triggering on every attempt after the cap.
+            user.failed_login_attempts = 0
+        await self.session.commit()
 
     # ── Token refresh ────────────────────────────────────────────────────────
 
@@ -167,7 +257,10 @@ class AuthService:
             raise InvalidTokenError()
 
         user = await self.repo.get_user_by_id(token_data.user_id)
-        if not user or not user.is_active:
+        # is_offboarded is checked here too, not just in get_current_user: an
+        # offboarded user must not be able to keep minting access tokens for the
+        # refresh token's remaining lifetime. Mirrors login/verify_otp.
+        if not user or not user.is_active or user.is_offboarded:
             raise InvalidTokenError()
 
         access_token, _ = create_access_token(
@@ -180,16 +273,37 @@ class AuthService:
 
     # ── Logout ───────────────────────────────────────────────────────────────
 
-    async def logout(self, access_jti: str, user_id: int) -> None:
-        """Blacklists the access token JTI."""
-        expires_at = datetime.now(UTC) + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+    async def logout(
+        self, access_jti: str, user_id: int, refresh_token: str | None = None
+    ) -> None:
+        """Blacklists the access token JTI, and the refresh token's if supplied.
+
+        Blacklisting only the access token would leave logout cosmetic: the
+        refresh token outlives it by days and can mint fresh access tokens the
+        whole time. The refresh token is only honoured when it actually belongs
+        to the caller, so this can't be used to revoke someone else's session.
+        """
         await self.repo.blacklist_token(
             jti=access_jti,
             user_id=user_id,
-            expires_at=expires_at,
+            expires_at=datetime.now(UTC)
+            + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
+
+        if not refresh_token:
+            return
+        token_data = decode_token(refresh_token)
+        if (
+            token_data
+            and token_data.token_type == "refresh"
+            and token_data.user_id == user_id
+        ):
+            await self.repo.blacklist_token(
+                jti=token_data.jti,
+                user_id=user_id,
+                expires_at=datetime.now(UTC)
+                + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            )
 
     # ── Invitation flow ──────────────────────────────────────────────────────
 

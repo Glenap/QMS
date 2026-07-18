@@ -31,6 +31,12 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // For multipart uploads, drop the instance's default application/json so the
+  // browser sets multipart/form-data WITH its boundary. Without this the server
+  // can't parse the body and reports the file field as required (422).
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    config.headers.delete('Content-Type');
+  }
   return config;
 });
 
@@ -54,6 +60,23 @@ async function refreshAccessToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// A 403 that means "this session is over", as opposed to "you may not do that".
+// The backend has no machine-readable error code, so these mirror the exact
+// `detail` strings of AccountDeactivatedError / InactiveUserError
+// (backend/app/core/exceptions.py). Matched exactly on purpose: ordinary
+// PermissionDeniedError 403s also contain the word "deactivate" (e.g. "You
+// cannot deactivate your own account"), and a substring match would sign an
+// admin out for clicking the wrong button.
+const SESSION_ENDING_403 = new Set([
+  'Your account has been deactivated. Please contact your administrator.',
+  'User account is inactive',
+]);
+
+function isDeactivatedResponse(error: AxiosError): boolean {
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+  return typeof detail === 'string' && SESSION_ENDING_403.has(detail);
 }
 
 api.interceptors.response.use(
@@ -81,6 +104,18 @@ api.interceptors.response.use(
         return api(original);
       }
       // Refresh failed → force logout.
+      tokenStorage.clear();
+      emitForcedLogout();
+    } else if (status === 401 && original?._retry && !isAuthCall) {
+      // Refresh succeeded but the replayed request still 401'd — the new token
+      // is no good either. Without this the user stays "logged in" while every
+      // request fails.
+      tokenStorage.clear();
+      emitForcedLogout();
+    } else if (status === 403 && isDeactivatedResponse(error)) {
+      // Deactivation/inactivity is a 403, not a 401, so the refresh branch above
+      // never sees it. An offboarded user would otherwise keep a valid-looking
+      // session showing errors on every page instead of being signed out.
       tokenStorage.clear();
       emitForcedLogout();
     }

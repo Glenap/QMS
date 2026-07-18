@@ -31,6 +31,8 @@ site supervisor. Visibility and every action are authorised per project and role
 | `frontend/react-app/` | React + Vite + TypeScript SPA | [frontend/react-app/README.md](frontend/react-app/README.md) |
 | `CLAUDE.md` | Conventions for Claude Code sessions | — |
 | `TASKS.md` | Living backlog (debt + deferred work) | — |
+| `DEPLOYMENT.md` | Hosted deploy (Neon + Render + Vercel), env vars, known limits | — |
+| `render.yaml` | Render blueprint for the backend service | — |
 
 ## Features
 
@@ -40,18 +42,40 @@ site supervisor. Visibility and every action are authorised per project and role
 - **RMC dispatch + gate scan** — a one-truck-per-token flow: QE requests a truck →
   supplier fills it via a public token link → site supervisor works the gate
   (arrive / accept / reject) with live volume accounting.
-- **Cube tests + quality engine** — cast samples, record 7/28-day strengths; a pure
-  IS 456 engine grades PASS / FAIL / CRITICAL_FAILURE and auto-raises an NCR.
+- **Mix designs (RMC-owned, QE-approved)** — the contractor requests grades from a
+  supplier; the RMC submits the detailed mix + mandatory PDF through its own token
+  link; the QE approves / rejects. Only a grade with an approved mix for **that
+  supplier** can be dispatched or poured.
+- **Cube tests + quality engine** — cast samples against a lab; the lab submits
+  7/14/28-day results through a passwordless token link. A pure IS 456 engine
+  grades PASS / FAIL / CRITICAL_FAILURE and auto-raises an NCR on a failing
+  28-day result.
+- **QE in-situ slump gate** — supervisor admission is provisional (`PENDING_QE`);
+  the QE runs the in-situ slump test against the mix design's range and
+  accepts/rejects every delivery, with a polled inbox + bell. Mismatches at the
+  gate raise action items into that inbox.
+- **90-minute placement window** — a truck whose dispatch→gate transit exceeds the
+  IS 456 window is auto-rejected at the arrival scan.
 - **NCR lifecycle** — review → root cause → corrective actions → penalties → close,
   with a guarded state machine.
 - **Analytics & traceability** — per-project KPIs, pass-rate trends, supplier
-  scorecards, and a full lineage walk from any reference (sample / pour / NCR /
-  challan / vehicle).
-- **Documents** — per-project file store (upload / list / download / delete).
+  scorecards, run/CUSUM charts, normal-distribution and graphical-summary panels
+  (moments, Anderson–Darling, Q–Q, KDE), modified-Thompson outlier scan, t-tests,
+  an IS/ACI code-standard selector with clause citations, and a full lineage walk
+  from any reference (sample / pour / NCR / challan / vehicle).
+- **Conformance analyser** — per-photo concrete-defect classification against a
+  72-entry taxonomy, with severity/root-cause/remediation and a grouped report.
+- **Documents** — per-project file store (upload / list / download / delete) with
+  QE/PM review.
 - **AI analyst agent** — natural-language Q&A over the metrics layer (LangGraph
-  ReAct loop + Ollama tool-calling; read-only tools, no text-to-SQL).
+  ReAct loop, read-only tools, no text-to-SQL). Asks structured clarifying
+  questions on broad queries and returns downloadable charts.
 - **AI suggestions (RAG)** — for a failing NCR, retrieve similar past *resolved*
   NCRs and suggest a root cause + corrective actions, human-in-the-loop.
+
+The AI provider is a seam (`AI_PROVIDER`): local **Ollama** for development,
+an OpenAI-compatible hosted API (**Gemini**) in the hosted deploy. Tests never
+call either — fakes are injected via dependency overrides.
 
 ## Quick start
 
@@ -92,6 +116,23 @@ JWT (python-jose) · passlib/bcrypt · LangGraph · Ollama · pytest · ruff · 
 
 **Frontend:** React 19 · Vite · TypeScript · React Router · axios · Recharts ·
 lucide-react.
+
+## Operational safety
+
+- **Destructive scripts fail closed.** `scripts/wipe_db.py` and
+  `scripts/seed_demo.py` both truncate every table, so they share one guard
+  (`app/database/wipe.py`) that refuses to run unless `ENVIRONMENT` is a
+  known-safe local value (`development` / `local` / `test` / `testing`). An
+  unset, misspelled, or production value aborts. The wipe + catalog re-seed
+  itself lives in that one module, used by both scripts and the test fixture.
+- **Request bodies are capped** before they are buffered
+  (`app/core/body_limit.py`, `MAX_UPLOAD_BYTES`). The public token routers accept
+  multipart uploads with no authentication, so the limit has to apply ahead of
+  the route, not just inside the service.
+- **Dev-convenience credentials are redacted in production**
+  (`app/core/fallback_log.py`). Best-effort email failures log the OTP code or
+  token link so local dev works without SMTP; in a hosted deploy those would land
+  in retained log storage, so they are replaced with a placeholder.
 
 ## Architecture in one line
 

@@ -171,6 +171,32 @@ async def send_invitation_email(
     await _send(message)
 
 
+async def send_account_exists_email(
+    email: str,
+    full_name: str | None = None,
+) -> None:
+    """
+    Sent when someone tries to register an address that already has an account.
+
+    Registration deliberately returns the same response either way, so it can't
+    be used to test which addresses exist. This is how the real owner still
+    finds out — and how a legitimate "did I already sign up?" gets answered.
+    """
+    greeting = f"Hi {full_name}," if full_name else "Hi,"
+    html_body = _render_template(
+        "account_exists.html",
+        {"greeting": greeting, "login_url": f"{settings.FRONTEND_URL}/auth/login"},
+    )
+
+    message = MessageSchema(
+        subject="You already have a Strata account",
+        recipients=[email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await _send(message)
+
+
 async def send_otp_email(
     email: str,
     code: str,

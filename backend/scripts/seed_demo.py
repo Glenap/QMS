@@ -32,14 +32,11 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 from httpx import ASGITransport, AsyncClient, Response
-from sqlalchemy import select, text
+from sqlalchemy import select
 
-import app.models  # noqa: F401 — registers every table on Base.metadata for the wipe
-from app.config import settings
 from app.core.security import hash_password
-from app.database.base import Base
-from app.database.seed import COMPONENTS, GRADES
 from app.database.session import AsyncSessionLocal
+from app.database.wipe import ensure_wipe_allowed, wipe_all
 from app.main import app
 from app.models.auth import (
     Organisation,
@@ -49,7 +46,7 @@ from app.models.auth import (
     User,
     UserRole,
 )
-from app.models.master import Component, Grade, ProjectContractor
+from app.models.master import ProjectContractor
 
 API = "/api/v1"
 PASSWORD = "Password123!"
@@ -442,16 +439,11 @@ async def _work_one_ncr(c, qe_tok, pid) -> bool:
 
 
 async def _wipe_all() -> None:
-    """Delete ALL existing data (every table, RESTART IDENTITY CASCADE) and
-    re-seed the global reference catalogs, so the demo starts from a clean slate
-    on every run. Mirrors scripts/wipe_db.py."""
-    tables = ", ".join(
-        f'"{t.schema}"."{t.name}"' for t in Base.metadata.sorted_tables
-    )
+    """Delete ALL existing data and re-seed the global reference catalogs, so
+    the demo starts from a clean slate on every run. The wipe itself lives in
+    app/database/wipe.py, shared with scripts/wipe_db.py."""
     async with AsyncSessionLocal() as s:
-        await s.execute(text(f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"))
-        await s.execute(Grade.__table__.insert(), GRADES)
-        await s.execute(Component.__table__.insert(), COMPONENTS)
+        await wipe_all(s)
         await s.commit()
 
 
@@ -534,9 +526,7 @@ async def _setup_contractor(c, tower, *, admin_tok, qe_tok, pid, grades, n_suppl
 
 
 async def seed() -> None:
-    if settings.is_production:
-        print("Refusing to seed a PRODUCTION database. Aborting.")
-        sys.exit(1)
+    ensure_wipe_allowed("seed (which first wipes) the database")
 
     print("Wiping existing data…")
     await _wipe_all()

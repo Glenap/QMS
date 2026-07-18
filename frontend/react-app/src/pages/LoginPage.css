@@ -78,6 +78,19 @@
   padding: 0 4px;
 }
 
+.qms-auth-note {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--gray-400, #9ca3af);
+}
+
+.qms-auth-note a {
+  color: var(--primary, #1a56db);
+  font-weight: 600;
+}
+
 /* ── Lab report page: per-milestone (7/14/28-day) blocks ──────────────────── */
 .qms-labreport-milestone {
   border: 1px solid var(--gray-200, #e5e7eb);

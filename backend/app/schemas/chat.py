@@ -31,6 +31,28 @@ class ChartSpec(BaseModel):
     data: list[dict] = Field(max_length=50)
 
 
+class ClarifyOption(BaseModel):
+    """One clickable filter choice. ``value`` is a natural-language phrase (often
+    carrying a concrete id or date range) appended to the refined follow-up."""
+
+    label: str  # what the user sees, e.g. "Tower A", "Last 30 days"
+    value: str  # what gets appended to the question, e.g. 'in tower "A" (tower_id 5)'
+
+
+class ClarifyDimension(BaseModel):
+    key: Literal["period", "tower", "grade", "supplier"]
+    label: str  # section heading, e.g. "Time period"
+    options: list[ClarifyOption] = Field(min_length=1)
+
+
+class Clarification(BaseModel):
+    """A structured clarifying question the UI renders as grouped, clickable
+    filter options — asked when a question would otherwise scan a lot of data."""
+
+    question: str
+    dimensions: list[ClarifyDimension] = Field(min_length=1)
+
+
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     history: list[ChatTurn] = Field(default_factory=list, max_length=20)
@@ -40,3 +62,4 @@ class ChatResponse(BaseModel):
     answer: str
     tools_used: list[str] = []
     chart: ChartSpec | None = None
+    clarification: Clarification | None = None

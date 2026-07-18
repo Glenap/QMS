@@ -347,6 +347,7 @@ class CubeSample(Base):
     __table_args__ = (
         Index("idx_cube_sample_pour", "pour_id"),
         Index("idx_cube_sample_reference", "sample_reference"),
+        UniqueConstraint("report_token", name="uq_cube_samples_report_token"),
         {"schema": "transaction"},
     )
 
@@ -375,9 +376,10 @@ class CubeSample(Base):
     # issued and emailed; the lab submits the 7/14/28-day reports through it
     # (no portal account). ``testing_started_on`` is the day the lab establishes
     # as the start of curing/testing — it anchors the milestone due-date schedule.
-    report_token: Mapped[str | None] = mapped_column(
-        String(100), nullable=True, unique=True
-    )
+    # Uniqueness comes from the explicit constraint in __table_args__ (named to
+    # match the migration) — no column-level unique=, which would render a
+    # differently-named duplicate under create_all.
+    report_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
     report_token_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

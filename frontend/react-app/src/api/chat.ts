@@ -23,10 +23,27 @@ export interface ChartSpec {
   data: Record<string, string | number | null>[];
 }
 
+export interface ClarifyOption {
+  label: string; // what the user sees, e.g. "Tower A", "Last 30 days"
+  value: string; // phrase appended to the refined question (carries id/date range)
+}
+
+export interface ClarifyDimension {
+  key: 'period' | 'tower' | 'grade' | 'supplier';
+  label: string; // section heading, e.g. "Time period"
+  options: ClarifyOption[];
+}
+
+export interface Clarification {
+  question: string;
+  dimensions: ClarifyDimension[];
+}
+
 export interface ChatAnswer {
   answer: string;
   tools_used: string[];
   chart?: ChartSpec | null;
+  clarification?: Clarification | null;
 }
 
 export const chatApi = {

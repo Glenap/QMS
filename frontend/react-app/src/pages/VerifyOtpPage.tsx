@@ -3,7 +3,7 @@
 // param. On success the user is logged in and sent to the app.
 
 import React, { useState } from 'react';
-import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../hooks/useAuth';
@@ -103,6 +103,14 @@ export const VerifyOtpPage: React.FC = () => {
             {resending ? 'Sending…' : 'Resend code'}
           </button>
         </div>
+        {/* Registration deliberately can't say whether an address already has an
+            account (that would let anyone test which emails are registered), so
+            an existing user lands here waiting for a code that won't arrive.
+            This is the generic hint that points them at the right door. */}
+        <p className="qms-auth-note">
+          Already have an account with this email? We've emailed you a note
+          instead — <Link to="/login">sign in</Link>.
+        </p>
       </div>
     </div>
   );

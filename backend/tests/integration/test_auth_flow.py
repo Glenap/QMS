@@ -56,11 +56,20 @@ class TestRegister:
         assert resp.status_code == 400, resp.text
         assert "access_token" not in resp.json()
 
-    async def test_register_duplicate_email_conflicts(self, client):
+    async def test_register_duplicate_email_is_indistinguishable(self, client):
+        """Registering an existing address must look exactly like a new one.
+
+        A 409 "Email already exists" on an unauthenticated endpoint lets anyone
+        test which addresses have accounts, so the response is deliberately
+        identical; the real owner is notified by email instead.
+        """
         first = await register_client_account(client)
         assert first.status_code == 201
         second = await register_client_account(client)
-        assert second.status_code == 409
+        assert second.status_code == 201, second.text
+        assert second.json() == first.json()
+        # And still no tokens — registration never authenticates.
+        assert "access_token" not in second.json()
 
     async def test_register_password_mismatch_is_422(self, client):
         resp = await client.post(

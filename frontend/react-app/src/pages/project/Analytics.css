@@ -82,3 +82,206 @@
   margin-bottom: 16px;
 }
 
+
+/* ── Graphical summary (Minitab-style descriptive report) ───────────────────── */
+.qms-gs-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .qms-gs-grid { grid-template-columns: 1fr; }
+  .qms-gs-plot-body { min-height: 220px; }
+}
+
+.qms-gs-plots {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* Each plot grows to share the column height, so the two charts fill the space
+   the (usually taller) stats column takes — no dead space under the plots. */
+.qms-gs-plot {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.qms-gs-plot-body {
+  flex: 1 1 auto;
+  min-height: 190px;
+}
+
+.qms-gs-plot-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.qms-gs-stats {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  background: var(--gray-50, #fafafa);
+}
+
+.qms-gs-stats-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-700);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 14px 0 6px;
+}
+.qms-gs-stats-title:first-child { margin-top: 0; }
+
+.qms-gs-dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 12px;
+  margin: 0;
+  font-size: 13px;
+}
+.qms-gs-dl dt,
+.qms-gs-dl dd {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+.qms-gs-dl dt { color: var(--gray-600); }
+.qms-gs-dl dd { margin: 0; font-weight: 600; color: var(--gray-900); font-variant-numeric: tabular-nums; text-align: right; }
+/* Last row in each list drops its divider. */
+.qms-gs-dl dt:nth-last-of-type(1),
+.qms-gs-dl dd:nth-last-of-type(1) { border-bottom: none; }
+
+.qms-gs-verdict {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.qms-gs-verdict.is-ok { background: var(--green-light, #def7ec); color: var(--green, #057a55); }
+.qms-gs-verdict.is-warn { background: var(--amber-light); color: var(--amber); }
+
+.qms-gs-ci {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--blue);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Code-standard selector + clause citations ──────────────────────────────── */
+.qms-code-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: var(--blue-light);
+  border: 1px solid var(--blue-mid);
+  border-radius: var(--radius-md);
+}
+.qms-code-bar-pdfs { display: flex; flex-direction: column; gap: 6px; }
+.qms-code-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  cursor: pointer;
+}
+.qms-code-toggle:hover { text-decoration: underline; }
+.qms-code-slots { display: flex; flex-wrap: wrap; gap: 8px; }
+.qms-code-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  font-size: 12.5px;
+}
+.qms-code-slot-label { font-weight: 600; color: var(--gray-800); }
+.qms-code-slot-none { color: var(--gray-400); font-style: italic; }
+.qms-code-slot-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--gray-600);
+  cursor: pointer;
+}
+.qms-code-slot-upload:hover:not(:disabled) { color: var(--blue); }
+.qms-code-slot-upload:disabled { opacity: 0.5; cursor: default; }
+
+.qms-clause-block { margin: -8px 0 14px; }
+.qms-clause-tag {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--gray-500);
+}
+.qms-clause-tag svg { color: var(--blue); flex-shrink: 0; }
+.qms-clause-code { font-weight: 700; color: var(--gray-700); }
+.qms-clause-ref { color: var(--gray-500); }
+.qms-clause-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue);
+  cursor: pointer;
+}
+.qms-clause-pdf:hover { text-decoration: underline; }
+
+/* Graphical-summary data-integrity alert + help text */
+.qms-gs-alert {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: var(--red-light, #fde8e8);
+  border: 1px solid var(--red, #e02424);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-800);
+}
+.qms-gs-help {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--gray-500);
+}
+.qms-gs-help strong { color: var(--gray-700); font-weight: 700; }
+
+/* Outlier-scan summary banner */
+.qms-out-summary {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-800);
+}
+.qms-out-summary.is-ok { background: var(--green-light); border: 1px solid #84e1bc; }
+.qms-out-summary.is-warn { background: var(--amber-light); border: 1px solid var(--amber); }

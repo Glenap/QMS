@@ -56,22 +56,25 @@ export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const { user, organisation, logout } = useAuth();
 
-  // The sidebar starts minimised (a Gmail-style icon rail); the hamburger expands
-  // it to the full labelled list. The choice is remembered.
+  // The sidebar defaults to the full labelled list; the hamburger minimises it to
+  // a Gmail-style icon rail. The choice is remembered — collapsed only when the
+  // user has explicitly minimised it (stored '1'); anything else is expanded.
   const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem(COLLAPSE_KEY) !== '0'; } catch { return true; }
+    try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; }
   });
 
   // In rail (collapsed) mode, exactly one section flyout may be open at a time.
   // Driving this from state (not independent CSS :hover/:focus-within per group)
   // is what stops two tall, top-anchored flyouts from overlapping each other.
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const toggleCollapsed = () =>
-    setCollapsed((c) => {
-      const next = !c;
-      try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
-      return next;
-    });
+
+  // Persist EVERY collapse/expand (not just the hamburger) so the choice survives
+  // reload and navigation — otherwise expanding from the rail would revert.
+  const applyCollapsed = (next: boolean) => {
+    setCollapsed(next);
+    try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* ignore */ }
+  };
+  const toggleCollapsed = () => applyCollapsed(!collapsed);
 
   // Detect "am I inside a project workspace?" from the URL.
   const match = useMatch('/app/projects/:projectId/*');
@@ -239,7 +242,7 @@ export const Sidebar: React.FC = () => {
                   <button
                     type="button"
                     className={`qms-rail-item ${activeKey === g.key ? 'is-active' : ''}`}
-                    onClick={() => setCollapsed(false)}
+                    onClick={() => applyCollapsed(false)}
                     title={g.label}
                   >
                     <span className="qms-rail-icon">

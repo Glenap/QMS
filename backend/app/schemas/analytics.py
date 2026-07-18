@@ -134,8 +134,87 @@ class DistributionCurve(BaseModel):
     mean: float | None = None
     std_dev: float | None = None
     fck: float | None = None
+    target_mean: float | None = None  # RMC design target, else IS-10262 fck+1.65σ
     curve: list[CurvePoint] = []  # sampled bell curve
     histogram: list[StrengthBucket] = []
+
+
+class HistogramBar(BaseModel):
+    """One equal-width bin of the graphical-summary histogram."""
+
+    bin_low: float
+    bin_high: float
+    count: int
+
+
+class ProbPoint(BaseModel):
+    """A point on the normal probability (Q–Q) plot."""
+
+    value: float        # ordered observed strength
+    theoretical: float  # theoretical normal quantile (fitted μ, σ)
+
+
+class GraphicalSummary(BaseModel):
+    """Minitab-style graphical summary of the filtered strength dataset.
+
+    Descriptive moments, quartiles, the Anderson–Darling normality test, a
+    t-based CI for the mean, and the curve data the UI overlays (histogram,
+    fitted normal PDF, Gaussian KDE, normal probability plot).
+    """
+
+    sample_count: int = 0
+    grade_name: str | None = None
+    fck: float | None = None
+    mean: float | None = None
+    std_dev: float | None = None
+    variance: float | None = None
+    skewness: float | None = None
+    kurtosis: float | None = None
+    minimum: float | None = None
+    q1: float | None = None
+    median: float | None = None
+    q3: float | None = None
+    maximum: float | None = None
+    ci_confidence: float = 0.95
+    ci_mean_low: float | None = None
+    ci_mean_high: float | None = None
+    ad_statistic: float | None = None
+    ad_p_value: float | None = None
+    is_normal: bool | None = None
+    bin_width: float | None = None
+    histogram: list[HistogramBar] = []
+    fit_curve: list[CurvePoint] = []   # fitted normal PDF (density)
+    kde_curve: list[CurvePoint] = []   # Gaussian kernel density estimate
+    prob_points: list[ProbPoint] = []
+
+
+class OutlierPointSchema(BaseModel):
+    """One observation in the outlier scan (chronological order)."""
+
+    index: int      # 1-based position in the ordered dataset
+    value: float
+    is_outlier: bool
+
+
+class OutlierAnalysis(BaseModel):
+    """Modified Thompson τ outlier scan of the filtered strength dataset.
+
+    Flags statistically inconsistent results and reports the mean/StDev before
+    and after their removal — a sudden StDev drop after removing points is a red
+    flag for copied or fabricated readings.
+    """
+
+    sample_count: int = 0
+    grade_name: str | None = None
+    mean: float | None = None
+    std_dev: float | None = None
+    outlier_count: int = 0
+    clean_mean: float | None = None      # mean after removing outliers
+    clean_std_dev: float | None = None   # StDev after removing outliers
+    tau: float | None = None             # modified Thompson τ (first iteration)
+    threshold: float | None = None       # τ·S — rejection distance from the mean
+    points: list[OutlierPointSchema] = []
+    outliers: list[float] = []           # rejected values, ascending
 
 
 class TargetMeanRow(BaseModel):

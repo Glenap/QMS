@@ -10,9 +10,11 @@ from datetime import date
 from typing import Any
 
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.master import Project
+from app.models.master import Grade, Project, Supplier, Tower
+from app.models.transaction import Pour
 from app.services.analytics_service import AnalyticsService
 from app.services.ncr_service import NCRService
 from app.services.traceability_service import TraceabilityService
@@ -126,9 +128,97 @@ TOOL_SPECS: list[dict] = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_project_dimensions",
+            "description": (
+                "List this project's filterable dimensions with their IDs and names: "
+                "towers (tower_id/tower_name), grades used (grade_id/grade_name) and "
+                "suppliers used (supplier_id/supplier_name). Call this to resolve a "
+                "tower / grade / supplier NAME the user typed into the ID the other "
+                "tools need."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_clarifying_question",
+            "description": (
+                "Ask the user to narrow a broad question BEFORE fetching data, when it "
+                "would otherwise scan a large amount of it and no scope was given "
+                "(e.g. 'how is quality?', 'compare suppliers', 'show all tests'). "
+                "Provide a short question and the dimensions to offer as filter options; "
+                "the UI turns each dimension into concrete clickable choices from this "
+                "project's real data. Do NOT call any other tool on the same turn."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "One short question, e.g. 'Which slice should I analyse?'",
+                    },
+                    "dimensions": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["period", "tower", "grade", "supplier"],
+                        },
+                        "description": "Which filters to offer (only those relevant to the question).",
+                    },
+                },
+                "required": ["question", "dimensions"],
+            },
+        },
+    },
 ]
 
+# The clarify tool is intercepted by the agent loop (it never runs as a query).
+CLARIFY_TOOL = "ask_clarifying_question"
+
 TOOL_NAMES = [spec["function"]["name"] for spec in TOOL_SPECS]
+
+
+async def project_dimensions(session: AsyncSession, project: Project) -> dict[str, list[dict]]:
+    """This project's towers + the grades and suppliers actually used, id + name.
+
+    Shared by the ``list_project_dimensions`` tool (name→id resolution for the
+    model) and by the clarify flow (concrete filter options for the user).
+    """
+    pid = project.project_id
+    towers = (
+        await session.execute(
+            select(Tower.tower_id, Tower.tower_name)
+            .where(Tower.project_id == pid)
+            .order_by(Tower.tower_name)
+        )
+    ).all()
+    grades = (
+        await session.execute(
+            select(Grade.grade_id, Grade.grade_name)
+            .join(Pour, Pour.grade_id == Grade.grade_id)
+            .where(Pour.project_id == pid)
+            .distinct()
+            .order_by(Grade.grade_name)
+        )
+    ).all()
+    suppliers = (
+        await session.execute(
+            select(Supplier.supplier_id, Supplier.supplier_name)
+            .join(Pour, Pour.supplier_horizontal_id == Supplier.supplier_id)
+            .where(Pour.project_id == pid)
+            .distinct()
+            .order_by(Supplier.supplier_name)
+        )
+    ).all()
+    return {
+        "towers": [{"tower_id": t, "tower_name": name} for t, name in towers],
+        "grades": [{"grade_id": g, "grade_name": name} for g, name in grades],
+        "suppliers": [{"supplier_id": s, "supplier_name": name} for s, name in suppliers],
+    }
 
 
 def _jsonable(value: Any) -> Any:
@@ -185,6 +275,9 @@ async def run_tool(session: AsyncSession, project: Project, name: str, args: dic
 
     if name == "list_ncrs":
         return _jsonable(await NCRService(session).list_ncrs(project))
+
+    if name == "list_project_dimensions":
+        return await project_dimensions(session, project)
 
     return {"error": f"Unknown tool: {name}"}
 

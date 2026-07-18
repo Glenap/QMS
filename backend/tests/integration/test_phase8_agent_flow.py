@@ -160,6 +160,60 @@ class TestAnalystAgent:
         tool_msgs = [m for m in fake.seen[1] if m["role"] == "tool"]
         assert tool_msgs and "error" in tool_msgs[0]["content"]
 
+    async def test_broad_question_returns_structured_clarification(self, client, db_session):
+        token, project_id = await _client_with_project(client)
+        # The model asks to clarify instead of answering a broad question.
+        fake = ScriptedLLM([
+            LLMReply(tool_calls=[ToolCall(
+                name="ask_clarifying_question",
+                arguments={
+                    "question": "Which slice should I analyse?",
+                    "dimensions": ["period", "tower", "grade"],
+                },
+            )]),
+        ])
+        _use_llm(fake)
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/chat",
+            json={"question": "how is quality?"},
+            headers=bearer(token),
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        clar = body["clarification"]
+        assert clar is not None
+        assert clar["question"] == "Which slice should I analyse?"
+        # The time window is always offered, with the presets and an "All time"
+        # choice; other dimensions appear only when the project has real values.
+        keys = [d["key"] for d in clar["dimensions"]]
+        assert "period" in keys
+        period = next(d for d in clar["dimensions"] if d["key"] == "period")
+        labels = [o["label"] for o in period["options"]]
+        assert "Last 30 days" in labels and "All time" in labels
+        assert body["tools_used"] == []          # clarify isn't a data tool
+        assert body["chart"] is None
+        # Clarifying ends the turn: no tools ran and no second LLM call happened.
+        assert len(fake.seen) == 1
+
+    async def test_list_project_dimensions_tool(self, client, db_session):
+        token, project_id = await _client_with_project(client)
+        fake = ScriptedLLM([
+            LLMReply(tool_calls=[ToolCall(name="list_project_dimensions", arguments={})]),
+            LLMReply(content="This project has no towers with pours yet."),
+        ])
+        _use_llm(fake)
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/chat",
+            json={"question": "which towers do we have?"},
+            headers=bearer(token),
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["tools_used"] == ["list_project_dimensions"]
+        tool_msgs = [m for m in fake.seen[1] if m["role"] == "tool"]
+        assert tool_msgs and '"towers"' in tool_msgs[0]["content"]
+
     async def test_unknown_project_rejected(self, client, db_session):
         token, _ = await _client_with_project(client)
         _use_llm(ScriptedLLM([LLMReply(content="x")]))
